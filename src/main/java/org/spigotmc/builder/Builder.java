@@ -13,6 +13,7 @@ import com.google.common.io.Resources;
 import com.google.gson.Gson;
 import difflib.DiffUtils;
 import difflib.Patch;
+import java.awt.Desktop;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -27,6 +28,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.security.KeyManagementException;
@@ -45,7 +47,8 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-
+import javax.swing.JFrame;
+import javax.swing.JLabel;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -71,6 +74,19 @@ public class Builder
 
     public static void main(String[] args) throws Exception
     {
+        if ( System.console() == null )
+        {
+            JFrame jFrame = new JFrame();
+            jFrame.setTitle( "SpigotMC - BuildTools" );
+            jFrame.setDefaultCloseOperation( JFrame.EXIT_ON_CLOSE );
+            jFrame.getContentPane().add( new JLabel( "You have to run BuildTools through bash (msysgit). Please read our wiki." ) );
+            jFrame.pack();
+            jFrame.setVisible( true );
+
+            Desktop.getDesktop().browse( new URI( "https://www.spigotmc.org/wiki/buildtools/" ) );
+            return;
+        }
+
         // May be null
         String buildVersion = Builder.class.getPackage().getImplementationVersion();
         int buildNumber = -1;
