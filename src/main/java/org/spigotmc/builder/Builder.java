@@ -76,7 +76,7 @@ public class Builder
 
     public static void main(String[] args) throws Exception
     {
-        if ( System.console() == null )
+        if ( false && System.console() == null )
         {
             JFrame jFrame = new JFrame();
             jFrame.setTitle( "SpigotMC - BuildTools" );
