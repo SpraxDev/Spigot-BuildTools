@@ -58,6 +58,7 @@ import org.apache.commons.io.output.TeeOutputStream;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
 
 public class Builder
@@ -66,6 +67,7 @@ public class Builder
     public static final String LOG_FILE = "BuildTools.log.txt";
     public static final boolean IS_WINDOWS = System.getProperty( "os.name" ).startsWith( "Windows" );
     public static final File CWD = new File( "." );
+    private static final boolean autocrlf = !"\n".equals( System.getProperty( "line.separator" ) );
     private static boolean dontUpdate;
     private static boolean skipCompile;
     private static boolean generateSource;
@@ -610,7 +612,7 @@ public class Builder
         }
     }
 
-    public static void clone(String url, File target) throws GitAPIException
+    public static void clone(String url, File target) throws GitAPIException, IOException
     {
         System.out.println( "Starting clone of " + url + " to " + target );
 
@@ -618,8 +620,11 @@ public class Builder
 
         try
         {
-            System.out.println( "Cloned git repository " + url + " to " + target.getAbsolutePath() + ". Current HEAD: " + commitHash( result ) );
+            StoredConfig config = result.getRepository().getConfig();
+            config.setBoolean( "core", null, "autocrlf", autocrlf );
+            config.save();
 
+            System.out.println( "Cloned git repository " + url + " to " + target.getAbsolutePath() + ". Current HEAD: " + commitHash( result ) );
         } finally
         {
             result.close();
