@@ -35,6 +35,7 @@ import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Enumeration;
@@ -240,7 +241,7 @@ public class Builder
 
                 if ( buildNumber != -1 && buildInfo.getToolsVersion() != -1 && buildNumber < buildInfo.getToolsVersion() )
                 {
-                    System.err.println( "**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from http://www.spigotmc.org/" );
+                    System.err.println( "**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/" );
                     System.exit( 1 );
                 }
             }
@@ -323,7 +324,7 @@ public class Builder
                 }
             } );
 
-            runProcess( CWD, "java", "-jar", "BuildData/bin/fernflower.jar", "-dgs=1", "-hdc=0", "-rbr=0", "-asc=1", "-udv=0", clazzDir.getPath(), decompileDir.getPath() );
+            runProcess( CWD, MessageFormat.format( versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath() ).split( " ") );
         }
 
         System.out.println( "Applying CraftBukkit Patches" );
