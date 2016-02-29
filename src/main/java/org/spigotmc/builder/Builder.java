@@ -323,8 +323,12 @@ public class Builder
                     return input.startsWith( "net/minecraft/server" );
                 }
             } );
+            if ( versionInfo.getDecompileCommand() == null )
+            {
+                versionInfo.setDecompileCommand( "java -jar BuildData/bin/fernflower.jar -dgs=1 -hdc=0 -rbr=0 -asc=1 -udv=0 {0} {1}" );
+            }
 
-            runProcess( CWD, MessageFormat.format( versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath() ).split( " ") );
+            runProcess( CWD, MessageFormat.format( versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath() ).split( " " ) );
         }
 
         System.out.println( "Applying CraftBukkit Patches" );
