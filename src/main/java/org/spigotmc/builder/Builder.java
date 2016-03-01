@@ -430,7 +430,8 @@ public class Builder
             }
         } catch ( Exception ex )
         {
-            System.err.println( "Error compiling Spigot, are you running this jar via msysgit?" );
+            System.err.println( "Error compiling Spigot. Please check the wiki for FAQs." );
+            System.err.println( "If this does not resolve your issue then please pastebin the entire BuildTools.log.txt file when seeking support." );
             ex.printStackTrace();
             System.exit( 1 );
         }
