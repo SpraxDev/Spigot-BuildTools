@@ -143,10 +143,8 @@ public class Builder
             System.err.println( "*** WARNING *** Use java -version to check your version and update as soon as possible." );
         }
 
-        try
-        {
-            runProcess( CWD, "bash", "-c", "exit" );
-        } catch ( Exception ex )
+        String shell = System.getenv().get( "SHELL" );
+        if ( shell == null || shell.trim().isEmpty() )
         {
             System.out.println( "You must run this jar through bash (msysgit)" );
             System.exit( 1 );
@@ -426,7 +424,7 @@ public class Builder
 
         try
         {
-            runProcess( spigot, "bash", "applyPatches.sh" );
+            runProcess( spigot, shell, "applyPatches.sh" );
             System.out.println( "*** Spigot patches applied!" );
 
             if ( !skipCompile )
