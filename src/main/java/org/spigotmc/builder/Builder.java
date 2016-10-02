@@ -146,8 +146,15 @@ public class Builder
         String shell = System.getenv().get( "SHELL" );
         if ( shell == null || shell.trim().isEmpty() )
         {
-            System.out.println( "You must run this jar through bash (msysgit)" );
-            System.exit( 1 );
+            shell = "bash";
+            try
+            {
+                runProcess( CWD, shell, "-c", "exit" );
+            } catch ( Exception ex )
+            {
+                System.out.println( "You must run this jar through bash (msysgit)" );
+                System.exit( 1 );
+            }
         }
 
         try
