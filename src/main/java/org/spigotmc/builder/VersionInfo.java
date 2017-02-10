@@ -13,6 +13,7 @@ public class VersionInfo
     private String packageMappings;
     private String minecraftHash;
     private String decompileCommand;
+    private String serverUrl;
 
     public VersionInfo(String minecraftVersion, String accessTransforms, String classMappings, String memberMappings, String packageMappings, String minecraftHash)
     {
@@ -22,5 +23,16 @@ public class VersionInfo
         this.memberMappings = memberMappings;
         this.packageMappings = packageMappings;
         this.minecraftHash = minecraftHash;
+    }
+
+    public VersionInfo(String minecraftVersion, String accessTransforms, String classMappings, String memberMappings, String packageMappings, String minecraftHash, String decompileCommand)
+    {
+        this.minecraftVersion = minecraftVersion;
+        this.accessTransforms = accessTransforms;
+        this.classMappings = classMappings;
+        this.memberMappings = memberMappings;
+        this.packageMappings = packageMappings;
+        this.minecraftHash = minecraftHash;
+        this.decompileCommand = decompileCommand;
     }
 }

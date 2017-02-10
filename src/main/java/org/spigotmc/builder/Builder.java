@@ -74,6 +74,7 @@ public class Builder
     private static boolean generateSource;
     private static boolean generateDocs;
     private static boolean dev;
+    private static String applyPatchesShell = "sh";
 
     public static void main(String[] args) throws Exception
     {
@@ -259,7 +260,7 @@ public class Builder
         }
 
         VersionInfo versionInfo = new Gson().fromJson(
-                Resources.toString( new File( "BuildData/info.json" ).toURI().toURL(), Charsets.UTF_8 ),
+                Files.toString( new File( "BuildData/info.json" ), Charsets.UTF_8 ),
                 VersionInfo.class
         );
         // Default to 1.8 builds.
@@ -272,7 +273,20 @@ public class Builder
         File vanillaJar = new File( workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar" );
         if ( !vanillaJar.exists() || !checkHash( vanillaJar, versionInfo ) )
         {
-            download( String.format( "https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion() ), vanillaJar );
+            if ( versionInfo.getServerUrl() != null )
+            {
+                download( versionInfo.getServerUrl(), vanillaJar );
+            } else
+            {
+                download( String.format( "https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion() ), vanillaJar );
+
+                // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
+                applyPatchesShell = System.getenv().get( "SHELL" );
+                if ( applyPatchesShell == null || applyPatchesShell.trim().isEmpty() )
+                {
+                    applyPatchesShell = "bash";
+                }
+            }
         }
         if ( !checkHash( vanillaJar, versionInfo ) )
         {
@@ -426,7 +440,7 @@ public class Builder
 
         try
         {
-            runProcess( spigot, "sh", "applyPatches.sh" );
+            runProcess( spigot, applyPatchesShell, "applyPatches.sh" );
             System.out.println( "*** Spigot patches applied!" );
 
             if ( !skipCompile )
