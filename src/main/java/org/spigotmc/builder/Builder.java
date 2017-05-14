@@ -138,10 +138,10 @@ public class Builder
 
         logOutput();
 
-        if ( Float.parseFloat( System.getProperty( "java.class.version" ) ) < 51.0 )
+        if ( Float.parseFloat( System.getProperty( "java.class.version" ) ) != 52.0 )
         {
-            System.err.println( "*** WARNING *** You are not using Java 7 or above. Although this will work, it is highly discouraged due to the security issues present." );
-            System.err.println( "*** WARNING *** Use java -version to check your version and update as soon as possible." );
+            System.err.println( "*** WARNING *** You are not using Java 8. Java 8 is the only supported version for Minecraft versions >= 1.12." );
+            System.err.println( "*** WARNING *** Please use java -version to check your version and note that early access versions of Java are not supported either." );
         }
 
         try
