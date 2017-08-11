@@ -138,12 +138,6 @@ public class Builder
 
         logOutput();
 
-        if ( Float.parseFloat( System.getProperty( "java.class.version" ) ) != 52.0 )
-        {
-            System.err.println( "*** WARNING *** You are not using Java 8. Java 8 is the only supported version for Minecraft versions >= 1.12." );
-            System.err.println( "*** WARNING *** Please use java -version to check your version and note that early access versions of Java are not supported either." );
-        }
-
         try
         {
             runProcess( CWD, "sh", "-c", "exit" );
@@ -201,7 +195,7 @@ public class Builder
         String m2Home = System.getenv( "M2_HOME" );
         if ( m2Home == null || !( maven = new File( m2Home ) ).exists() )
         {
-            maven = new File( "apache-maven-3.2.5" );
+            maven = new File( "apache-maven-3.5.0" );
 
             if ( !maven.exists() )
             {
@@ -210,7 +204,7 @@ public class Builder
                 File mvnTemp = new File( "mvn.zip" );
                 mvnTemp.deleteOnExit();
 
-                download( "https://static.spigotmc.org/maven/apache-maven-3.2.5-bin.zip", mvnTemp );
+                download( "https://static.spigotmc.org/maven/apache-maven-3.5.0-bin.zip", mvnTemp );
                 unzip( mvnTemp, new File( "." ) );
             }
         }
