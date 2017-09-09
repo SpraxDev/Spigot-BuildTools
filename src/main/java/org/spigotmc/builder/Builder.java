@@ -78,7 +78,7 @@ public class Builder
 
     public static void main(String[] args) throws Exception
     {
-        if ( CWD.getAbsolutePath().contains( "'" ) )
+        if ( CWD.getAbsolutePath().contains( "'" ) || CWD.getAbsolutePath().contains( "#" ) )
         {
             System.err.println( "Please do not run in a path with special characters!" );
             return;
