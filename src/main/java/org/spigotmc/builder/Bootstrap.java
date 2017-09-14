@@ -14,10 +14,10 @@ public class Bootstrap
             return;
         }
 
-        if ( javaVersion != 52.0 )
+        if ( javaVersion < 52.0 )
         {
-            System.err.println( "*** WARNING *** You are not using Java 8. Java 8 is the only supported version for Minecraft versions >= 1.12." );
-            System.err.println( "*** WARNING *** Please use java -version to check your version and note that early access versions of Java are not supported either." );
+            System.err.println( "*** WARNING *** Outdated Java detected (" + javaVersion + "). Minecraft >= 1.12 requires at least Java 8." );
+            System.err.println( "*** WARNING *** You may use java -version to double check your Java version." );
         }
 
         Builder.main( args );
