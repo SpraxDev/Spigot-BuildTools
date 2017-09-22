@@ -149,7 +149,7 @@ public class Builder
 
         try
         {
-            runProcess( CWD, "git", "config", "--global", "user.name" );
+            runProcess( CWD, "git", "config", "--global", "--includes", "user.name" );
         } catch ( Exception ex )
         {
             System.out.println( "Git name not set, setting it to default value." );
@@ -157,7 +157,7 @@ public class Builder
         }
         try
         {
-            runProcess( CWD, "git", "config", "--global", "user.email" );
+            runProcess( CWD, "git", "config", "--global", "--includes", "user.email" );
         } catch ( Exception ex )
         {
             System.out.println( "Git email not set, setting it to default value." );
