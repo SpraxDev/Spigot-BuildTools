@@ -355,6 +355,11 @@ public class Builder
         File patchDir = new File( craftBukkit, "nms-patches" );
         for ( File file : patchDir.listFiles() )
         {
+            if ( !file.getName().endsWith( ".patch" ) )
+            {
+                continue;
+            }
+
             String targetFile = "net/minecraft/server/" + file.getName().replaceAll( ".patch", ".java" );
 
             File clean = new File( decompileDir, targetFile );
