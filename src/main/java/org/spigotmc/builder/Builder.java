@@ -4,6 +4,7 @@ import com.google.common.base.Charsets;
 import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.ObjectArrays;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.common.io.ByteStreams;
@@ -75,6 +76,8 @@ public class Builder
     private static boolean generateDocs;
     private static boolean dev;
     private static String applyPatchesShell = "sh";
+    //
+    private static File msysDir;
 
     public static void main(String[] args) throws Exception
     {
@@ -143,8 +146,38 @@ public class Builder
             runProcess( CWD, "sh", "-c", "exit" );
         } catch ( Exception ex )
         {
-            System.out.println( "You must run this jar through bash (msysgit)" );
-            System.exit( 1 );
+            if ( IS_WINDOWS )
+            {
+                String gitVersion = "PortableGit-2.15.0-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
+                msysDir = new File( gitVersion, "PortableGit" );
+
+                if ( !msysDir.isDirectory() )
+                {
+                    System.out.println( "*** Could not find PortableGit installation, downloading. ***" );
+
+                    String gitName = gitVersion + ".7z.exe";
+                    File gitInstall = new File( gitVersion, gitName );
+                    gitInstall.getParentFile().mkdirs();
+
+                    if ( !gitInstall.exists() )
+                    {
+                        download( "https://static.spigotmc.org/git/" + gitName, gitInstall );
+                    }
+
+                    System.out.println( "Extracting downloaded git install" );
+                    // yes to all, silent, don't run. Only -y seems to work
+                    runProcess( gitInstall.getParentFile(), gitInstall.getAbsolutePath(), "-y", "-gm2", "-nr" );
+
+                    gitInstall.delete();
+                }
+
+                System.out.println( "*** Using downloaded git " + msysDir + " ***" );
+                System.out.println( "*** Please note that this is a beta feature, so if it does not work please also try a manual install of git from https://git-for-windows.github.io/ ***" );
+            } else
+            {
+                System.out.println( "You must run this jar through bash (msysgit)" );
+                System.exit( 1 );
+            }
         }
 
         try
@@ -540,12 +573,49 @@ public class Builder
 
     public static int runProcess(File workDir, String... command) throws Exception
     {
+        if ( msysDir != null )
+        {
+            if ( "bash".equals( command[0] ) )
+            {
+                command[0] = "git-bash";
+            }
+            String[] shim = new String[]
+            {
+                "cmd.exe", "/C"
+            };
+            command = ObjectArrays.concat( shim, command, String.class );
+        }
+        return runProcess0( workDir, command );
+    }
+
+    private static int runProcess0(File workDir, String... command) throws Exception
+    {
         ProcessBuilder pb = new ProcessBuilder( command );
         pb.directory( workDir );
         pb.environment().put( "JAVA_HOME", System.getProperty( "java.home" ) );
         if ( !pb.environment().containsKey( "MAVEN_OPTS" ) )
         {
             pb.environment().put( "MAVEN_OPTS", "-Xmx1024M" );
+        }
+        if ( msysDir != null )
+        {
+            String pathEnv = null;
+            for ( String key : pb.environment().keySet() )
+            {
+                if ( key.equalsIgnoreCase( "path" ) )
+                {
+                    pathEnv = key;
+                }
+            }
+            if ( pathEnv == null )
+            {
+                throw new IllegalStateException( "Could not find path variable!" );
+            }
+
+            String path = pb.environment().get( pathEnv );
+            path += ";" + msysDir.getAbsolutePath();
+            path += ";" + new File( msysDir, "bin" ).getAbsolutePath();
+            pb.environment().put( pathEnv, path );
         }
 
         final Process ps = pb.start();
