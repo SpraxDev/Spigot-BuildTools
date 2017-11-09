@@ -96,6 +96,7 @@
                     <archive>
                         <manifestEntries>
                             <Main-Class>org.spigotmc.builder.Bootstrap</Main-Class>
+                            <Implementation-Title>BuildTools</Implementation-Title>
                             <Implementation-Version>${describe}</Implementation-Version>
                         </manifestEntries>
                     </archive>
