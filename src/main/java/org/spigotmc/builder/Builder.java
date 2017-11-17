@@ -668,42 +668,48 @@ public class Builder
         targetFolder.mkdir();
         ZipFile zip = new ZipFile( zipFile );
 
-        for ( Enumeration<? extends ZipEntry> entries = zip.entries(); entries.hasMoreElements(); )
+        try
         {
-            ZipEntry entry = entries.nextElement();
-
-            if ( filter != null )
+            for ( Enumeration<? extends ZipEntry> entries = zip.entries(); entries.hasMoreElements(); )
             {
-                if ( !filter.apply( entry.getName() ) )
+                ZipEntry entry = entries.nextElement();
+
+                if ( filter != null )
                 {
+                    if ( !filter.apply( entry.getName() ) )
+                    {
+                        continue;
+                    }
+                }
+
+                File outFile = new File( targetFolder, entry.getName() );
+
+                if ( entry.isDirectory() )
+                {
+                    outFile.mkdirs();
                     continue;
                 }
-            }
+                if ( outFile.getParentFile() != null )
+                {
+                    outFile.getParentFile().mkdirs();
+                }
 
-            File outFile = new File( targetFolder, entry.getName() );
+                InputStream is = zip.getInputStream( entry );
+                OutputStream os = new FileOutputStream( outFile );
+                try
+                {
+                    ByteStreams.copy( is, os );
+                } finally
+                {
+                    is.close();
+                    os.close();
+                }
 
-            if ( entry.isDirectory() )
-            {
-                outFile.mkdirs();
-                continue;
+                System.out.println( "Extracted: " + outFile );
             }
-            if ( outFile.getParentFile() != null )
-            {
-                outFile.getParentFile().mkdirs();
-            }
-
-            InputStream is = zip.getInputStream( entry );
-            OutputStream os = new FileOutputStream( outFile );
-            try
-            {
-                ByteStreams.copy( is, os );
-            } finally
-            {
-                is.close();
-                os.close();
-            }
-
-            System.out.println( "Extracted: " + outFile );
+        } finally
+        {
+            zip.close();
         }
     }
 
