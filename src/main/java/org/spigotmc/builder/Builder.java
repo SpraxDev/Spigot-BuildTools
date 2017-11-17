@@ -125,6 +125,7 @@ public class Builder
         OptionSpec<Void> generateSourceFlag = parser.accepts( "generate-source" );
         OptionSpec<Void> generateDocsFlag = parser.accepts( "generate-docs" );
         OptionSpec<Void> devFlag = parser.accepts( "dev" );
+        OptionSpec<File> outputDir = parser.acceptsAll( Arrays.asList( "o", "output-dir" ) ).withRequiredArg().ofType( File.class ).defaultsTo( CWD );
         OptionSpec<String> jenkinsVersion = parser.accepts( "rev" ).withRequiredArg().defaultsTo( "latest" );
 
         OptionSet options = parser.parse( args );
@@ -496,8 +497,8 @@ public class Builder
         if ( !skipCompile )
         {
             System.out.println( "Success! Everything compiled successfully. Copying final .jar files now." );
-            copyJar( "CraftBukkit/target", "craftbukkit", "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" );
-            copyJar( "Spigot/Spigot-Server/target", "spigot", "spigot-" + versionInfo.getMinecraftVersion() + ".jar" );
+            copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
+            copyJar( "Spigot/Spigot-Server/target", "spigot", new File( outputDir.value( options ), "spigot-" + versionInfo.getMinecraftVersion() + ".jar" ) );
         }
     }
 
@@ -536,7 +537,7 @@ public class Builder
         }
     }
 
-    public static void copyJar(String path, final String jarPrefix, String outJarName) throws Exception
+    public static void copyJar(String path, final String jarPrefix, File outJar) throws Exception
     {
         File[] files = new File( path ).listFiles( new FilenameFilter()
         {
@@ -546,11 +547,17 @@ public class Builder
                 return name.startsWith( jarPrefix ) && name.endsWith( ".jar" );
             }
         } );
+
+        if ( !outJar.getParentFile().isDirectory() )
+        {
+            outJar.getParentFile().mkdirs();
+        }
+
         for ( File file : files )
         {
-            System.out.println( "Copying " + file.getName() + " to " + CWD.getAbsolutePath() );
-            Files.copy( file, new File( CWD, outJarName ) );
-            System.out.println( "  - Saved as " + outJarName );
+            System.out.println( "Copying " + file.getName() + " to " + outJar.getAbsolutePath() );
+            Files.copy( file, outJar );
+            System.out.println( "  - Saved as " + outJar );
         }
     }
 
