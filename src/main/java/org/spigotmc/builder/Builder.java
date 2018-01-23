@@ -181,6 +181,8 @@ public class Builder
             }
         }
 
+        runProcess( CWD, "git", "--version" );
+
         try
         {
             runProcess( CWD, "git", "config", "--global", "--includes", "user.name" );
