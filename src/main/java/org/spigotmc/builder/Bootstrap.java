@@ -20,9 +20,9 @@ public class Bootstrap
             System.err.println( "*** WARNING *** You may use java -version to double check your Java version." );
         }
 
-        if ( javaVersion > 54.0 )
+        if ( javaVersion > 55.0 )
         {
-            System.err.println( "*** WARNING *** Unsupported Java detected (" + javaVersion + "). BuildTools has only been tested up to Java 10. Use of development Java version is not supported." );
+            System.err.println( "*** WARNING *** Unsupported Java detected (" + javaVersion + "). BuildTools has only been tested up to Java 11. Use of development Java version is not supported." );
             System.err.println( "*** WARNING *** You may use java -version to double check your Java version." );
         }
 
