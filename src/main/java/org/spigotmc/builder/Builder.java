@@ -396,7 +396,7 @@ public class Builder
                 continue;
             }
 
-            String targetFile = "net/minecraft/server/" + file.getName().replaceAll( ".patch", ".java" );
+            String targetFile = "net/minecraft/server/" + file.getName().replace( ".patch", ".java" );
 
             File clean = new File( decompileDir, targetFile );
             File t = new File( nmsDir.getParentFile(), targetFile );
