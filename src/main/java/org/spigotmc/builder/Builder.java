@@ -1,6 +1,7 @@
 package org.spigotmc.builder;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
@@ -120,6 +121,7 @@ public class Builder
 
         OptionParser parser = new OptionParser();
         OptionSpec<Void> disableCertFlag = parser.accepts( "disable-certificate-check" );
+        OptionSpec<Void> disableJavaCheck = parser.accepts( "disable-java-check" );
         OptionSpec<Void> dontUpdateFlag = parser.accepts( "dont-update" );
         OptionSpec<Void> skipCompileFlag = parser.accepts( "skip-compile" );
         OptionSpec<Void> generateSourceFlag = parser.accepts( "generate-source" );
@@ -252,7 +254,7 @@ public class Builder
         Git spigotGit = Git.open( spigot );
         Git buildGit = Git.open( buildData );
 
-        BuildInfo buildInfo = new BuildInfo( "Dev Build", "Development", 0, new BuildInfo.Refs( "master", "master", "master", "master" ) );
+        BuildInfo buildInfo = new BuildInfo( "Dev Build", "Development", 0, null, new BuildInfo.Refs( "master", "master", "master", "master" ) );
 
         if ( !dontUpdate )
         {
@@ -280,6 +282,36 @@ public class Builder
                 {
                     System.err.println( "**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl" );
                     System.exit( 1 );
+                }
+
+                if ( !options.has( disableJavaCheck ) )
+                {
+                    if ( buildInfo.getJavaVersions() == null )
+                    {
+                        buildInfo.setJavaVersions( new int[]
+                        {
+                            JavaVersion.JAVA_7.getVersion(), JavaVersion.JAVA_8.getVersion()
+                        } );
+                    }
+
+                    Preconditions.checkArgument( buildInfo.getJavaVersions().length == 2, "Expected only two Java versions, got %s", JavaVersion.printVersions( buildInfo.getJavaVersions() ) );
+
+                    JavaVersion curVersion = JavaVersion.getCurrentVersion();
+                    JavaVersion minVersion = JavaVersion.getByVersion( buildInfo.getJavaVersions()[0] );
+                    JavaVersion maxVersion = JavaVersion.getByVersion( buildInfo.getJavaVersions()[1] );
+
+                    if ( minVersion == JavaVersion.UNKNOWN || maxVersion == JavaVersion.UNKNOWN )
+                    {
+                        System.err.println( "*** This BuildTools doesn't know how to use  Java versions " + JavaVersion.printVersions( buildInfo.getJavaVersions() ) + ", please update" );
+                        System.exit( 1 );
+                    }
+
+                    if ( curVersion.getVersion() < minVersion.getVersion() || curVersion.getVersion() > maxVersion.getVersion() )
+                    {
+                        System.err.println( "*** The version you have requested to build requires Java versions between " + JavaVersion.printVersions( buildInfo.getJavaVersions() ) + ", but you are using " + curVersion );
+                        System.err.println( "*** Please rerun BuildTools using an appropriate Java version. For obvious reasons outdated MC versions do not support Java versions that did not exist at their release." );
+                        System.exit( 1 );
+                    }
                 }
             }
 

@@ -11,6 +11,7 @@ public class BuildInfo
     private String name;
     private String description;
     private int toolsVersion = -1;
+    private int[] javaVersions;
     private Refs refs;
 
     @Data
