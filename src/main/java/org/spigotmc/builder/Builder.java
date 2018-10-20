@@ -634,6 +634,7 @@ public class Builder
         ProcessBuilder pb = new ProcessBuilder( command );
         pb.directory( workDir );
         pb.environment().put( "JAVA_HOME", System.getProperty( "java.home" ) );
+        pb.environment().remove( "M2_HOME" ); // Just let maven figure this out from where it is invoked
         if ( !pb.environment().containsKey( "MAVEN_OPTS" ) )
         {
             pb.environment().put( "MAVEN_OPTS", "-Xmx1024M" );
