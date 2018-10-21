@@ -118,6 +118,7 @@ public class Builder
             }
         }
         System.out.println( "Loading BuildTools version: " + buildVersion + " (#" + buildNumber + ")" );
+        System.out.println( "Java Version: " + JavaVersion.getCurrentVersion() );
 
         OptionParser parser = new OptionParser();
         OptionSpec<Void> disableCertFlag = parser.accepts( "disable-certificate-check" );
