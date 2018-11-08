@@ -640,6 +640,10 @@ public class Builder
         {
             pb.environment().put( "MAVEN_OPTS", "-Xmx1024M" );
         }
+        if ( !pb.environment().containsKey( "_JAVA_OPTIONS" ) )
+        {
+            pb.environment().put( "_JAVA_OPTIONS", "-Djdk.net.URLClassPath.disableClassPathURLCheck=true" );
+        }
         if ( msysDir != null )
         {
             String pathEnv = null;
