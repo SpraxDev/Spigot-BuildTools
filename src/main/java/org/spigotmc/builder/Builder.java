@@ -374,7 +374,7 @@ public class Builder
         File finalMappedJar = new File( workDir, "mapped." + mappingsVersion + ".jar" );
         if ( !finalMappedJar.exists() )
         {
-            System.out.println( "Final mapped jar: " + finalMappedJar + " does not exist, creating!" );
+            System.out.println( "Final mapped jar: " + finalMappedJar + " does not exist, creating (please wait)!" );
 
             File clMappedJar = new File( finalMappedJar + "-cl" );
             File mMappedJar = new File( finalMappedJar + "-m" );
@@ -632,6 +632,14 @@ public class Builder
 
     private static int runProcess0(File workDir, String... command) throws Exception
     {
+        Preconditions.checkArgument( workDir != null, "workDir" );
+        Preconditions.checkArgument( command != null && command.length > 0, "Invalid command" );
+
+        if ( command[0].equals( "java" ) )
+        {
+            command[0] = System.getProperty( "java.home" ) + "/bin/" + command[0];
+        }
+
         ProcessBuilder pb = new ProcessBuilder( command );
         pb.directory( workDir );
         pb.environment().put( "JAVA_HOME", System.getProperty( "java.home" ) );
