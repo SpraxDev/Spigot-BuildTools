@@ -675,8 +675,8 @@ public class Builder
 
         final Process ps = pb.start();
 
-        new Thread( new StreamRedirector( ps.getInputStream(), System.out ) ).start();
-        new Thread( new StreamRedirector( ps.getErrorStream(), System.err ) ).start();
+        new Thread( new StreamRedirector( ps.getInputStream(), System.out ), "System.out redirector" ).start();
+        new Thread( new StreamRedirector( ps.getErrorStream(), System.err ), "System.err redirector" ).start();
 
         int status = ps.waitFor();
 
