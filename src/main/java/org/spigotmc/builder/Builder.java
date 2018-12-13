@@ -30,6 +30,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
@@ -669,7 +670,17 @@ public class Builder
         }
         if ( !pb.environment().containsKey( "_JAVA_OPTIONS" ) )
         {
-            pb.environment().put( "_JAVA_OPTIONS", "-Djdk.net.URLClassPath.disableClassPathURLCheck=true" );
+            String javaOptions = "-Djdk.net.URLClassPath.disableClassPathURLCheck=true";
+
+            for ( String arg : ManagementFactory.getRuntimeMXBean().getInputArguments() )
+            {
+                if ( arg.startsWith( "-Xmx" ) )
+                {
+                    javaOptions += " " + arg;
+                }
+            }
+
+            pb.environment().put( "_JAVA_OPTIONS", javaOptions );
         }
         if ( msysDir != null )
         {
