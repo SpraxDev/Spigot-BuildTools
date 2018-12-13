@@ -333,6 +333,13 @@ public class Builder
         }
         System.out.println( "Attempting to build Minecraft with details: " + versionInfo );
 
+        if ( buildNumber != -1 && versionInfo.getToolsVersion() != -1 && buildNumber < versionInfo.getToolsVersion() )
+        {
+            System.err.println( "" );
+            System.err.println( "**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl" );
+            System.exit( 1 );
+        }
+
         File vanillaJar = new File( workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar" );
         if ( !vanillaJar.exists() || !checkHash( vanillaJar, versionInfo ) )
         {
@@ -379,13 +386,25 @@ public class Builder
             File clMappedJar = new File( finalMappedJar + "-cl" );
             File mMappedJar = new File( finalMappedJar + "-m" );
 
-            runProcess( CWD, "java", "-jar", "BuildData/bin/SpecialSource-2.jar", "map", "-i", vanillaJar.getPath(), "-m", "BuildData/mappings/" + versionInfo.getClassMappings(), "-o", clMappedJar.getPath() );
+            if ( versionInfo.getClassMapCommand() == null )
+            {
+                versionInfo.setClassMapCommand( "java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}" );
+            }
+            runProcess( CWD, MessageFormat.format( versionInfo.getClassMapCommand(), vanillaJar.getPath(), "BuildData/mappings/" + versionInfo.getClassMappings(), clMappedJar.getPath() ).split( " " ) );
 
-            runProcess( CWD, "java", "-jar", "BuildData/bin/SpecialSource-2.jar", "map", "-i", clMappedJar.getPath(),
-                    "-m", "BuildData/mappings/" + versionInfo.getMemberMappings(), "-o", mMappedJar.getPath() );
+            if ( versionInfo.getMemberMapCommand() == null )
+            {
+                versionInfo.setMemberMapCommand( "java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}" );
+            }
+            runProcess( CWD, MessageFormat.format( versionInfo.getMemberMapCommand(), clMappedJar.getPath(),
+                    "BuildData/mappings/" + versionInfo.getMemberMappings(), mMappedJar.getPath() ).split( " " ) );
 
-            runProcess( CWD, "java", "-jar", "BuildData/bin/SpecialSource.jar", "--kill-lvt", "-i", mMappedJar.getPath(), "--access-transformer", "BuildData/mappings/" + versionInfo.getAccessTransforms(),
-                    "-m", "BuildData/mappings/" + versionInfo.getPackageMappings(), "-o", finalMappedJar.getPath() );
+            if ( versionInfo.getFinalMapCommand() == null )
+            {
+                versionInfo.setFinalMapCommand( "java -jar  BuildData/bin/SpecialSource.jar --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}" );
+            }
+            runProcess( CWD, MessageFormat.format( versionInfo.getFinalMapCommand(), mMappedJar.getPath(), "BuildData/mappings/" + versionInfo.getAccessTransforms(),
+                    "BuildData/mappings/" + versionInfo.getPackageMappings(), finalMappedJar.getPath() ).split( " " ) );
         }
 
         runProcess( CWD, "sh", mvn, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
