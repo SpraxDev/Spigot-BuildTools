@@ -34,6 +34,7 @@ import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
@@ -443,10 +444,13 @@ public class Builder
             java.nio.file.Files.createSymbolicLink( latestLink.toPath(), decompileDir.getParentFile().toPath().relativize( decompileDir.toPath() ) );
         } catch ( UnsupportedOperationException ex )
         {
-            // Ignore on Windows etc
+            // Ignore if not possible
+        } catch ( FileSystemException ex )
+        {
+            // Not running as admin on Windows
         } catch ( IOException ex )
         {
-            System.err.println( "Failed to create decompile-latest link " + ex.getMessage() );
+            System.out.println( "Did not create decompile-latest link " + ex.getMessage() );
         }
 
         System.out.println( "Applying CraftBukkit Patches" );
