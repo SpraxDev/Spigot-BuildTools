@@ -64,6 +64,7 @@ import org.apache.commons.io.output.TeeOutputStream;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
 
@@ -639,7 +640,14 @@ public class Builder
     {
         System.out.println( "Pulling updates for " + repo.getRepository().getDirectory() );
 
-        repo.reset().setRef( "origin/master" ).setMode( ResetCommand.ResetType.HARD ).call();
+        try
+        {
+            repo.reset().setRef( "origin/master" ).setMode( ResetCommand.ResetType.HARD ).call();
+        } catch ( JGitInternalException ex )
+        {
+            System.err.println( "*** Warning, could not find origin/master ref, but continuing anyway." );
+            System.err.println( "*** If further errors occur please delete " + repo.getRepository().getDirectory().getParent() + " and retry." );
+        }
         repo.fetch().call();
 
         System.out.println( "Successfully fetched updates!" );
