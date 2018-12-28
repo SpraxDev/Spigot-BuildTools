@@ -29,7 +29,7 @@ public class Bootstrap
         }
 
         long memoryMb = Runtime.getRuntime().maxMemory() >> 20;
-        if ( memoryMb < 512 )
+        if ( memoryMb < 448 ) // Older JVMs (including Java 8) report less than Xmx here. Allow some slack for people actually using -Xmx512M
         {
             System.err.println( "BuildTools requires at least 512M of memory to run (1024M recommended), but has only detected " + memoryMb + "M." );
             System.err.println( "This can often occur if you are running a 32-bit system, or one with low RAM." );
