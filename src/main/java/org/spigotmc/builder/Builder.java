@@ -532,7 +532,13 @@ public class Builder
         if ( !skipCompile )
         {
             System.out.println( "Compiling Bukkit" );
-            runProcess( bukkit, "sh", mvn, "clean", "install" );
+            if ( dev )
+            {
+                runProcess( bukkit, "sh", mvn, "-P", "development", "clean", "install" );
+            } else
+            {
+                runProcess( bukkit, "sh", mvn, "clean", "install" );
+            }
             if ( generateDocs )
             {
                 runProcess( bukkit, "sh", mvn, "javadoc:jar" );
@@ -543,7 +549,13 @@ public class Builder
             }
 
             System.out.println( "Compiling CraftBukkit" );
-            runProcess( craftBukkit, "sh", mvn, "clean", "install" );
+            if ( dev )
+            {
+                runProcess( craftBukkit, "sh", mvn, "-P", "development", "clean", "install" );
+            } else
+            {
+                runProcess( craftBukkit, "sh", mvn, "clean", "install" );
+            }
         }
 
         try
@@ -554,7 +566,13 @@ public class Builder
             if ( !skipCompile )
             {
                 System.out.println( "Compiling Spigot & Spigot-API" );
-                runProcess( spigot, "sh", mvn, "clean", "install" );
+                if ( dev )
+                {
+                    runProcess( spigot, "sh", mvn, "-P", "development", "clean", "install" );
+                } else
+                {
+                    runProcess( spigot, "sh", mvn, "clean", "install" );
+                }
             }
         } catch ( Exception ex )
         {
