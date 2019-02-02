@@ -305,12 +305,6 @@ public class Builder
                     JavaVersion minVersion = JavaVersion.getByVersion( buildInfo.getJavaVersions()[0] );
                     JavaVersion maxVersion = JavaVersion.getByVersion( buildInfo.getJavaVersions()[1] );
 
-                    if ( minVersion == JavaVersion.UNKNOWN || maxVersion == JavaVersion.UNKNOWN )
-                    {
-                        System.err.println( "*** This BuildTools doesn't know how to use  Java versions " + JavaVersion.printVersions( buildInfo.getJavaVersions() ) + ", please update" );
-                        System.exit( 1 );
-                    }
-
                     if ( curVersion.getVersion() < minVersion.getVersion() || curVersion.getVersion() > maxVersion.getVersion() )
                     {
                         System.err.println( "*** The version you have requested to build requires Java versions between " + JavaVersion.printVersions( buildInfo.getJavaVersions() ) + ", but you are using " + curVersion );

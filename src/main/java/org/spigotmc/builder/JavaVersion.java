@@ -5,39 +5,52 @@ import java.util.Map;
 import lombok.Getter;
 
 @Getter
-public enum JavaVersion
+public class JavaVersion
 {
 
-    UNKNOWN( -1 ),
-    JAVA_5( 49 ),
-    JAVA_6( 50 ),
-    JAVA_7( 51 ),
-    JAVA_8( 52 ),
-    JAVA_9( 53 ),
-    JAVA_10( 54 ),
-    JAVA_11( 55 );
-
+    private static final Map<Integer, JavaVersion> byVersion = new HashMap<Integer, JavaVersion>();
+    //
+    public static final JavaVersion JAVA_5 = new JavaVersion( "Java 5", 49 );
+    public static final JavaVersion JAVA_6 = new JavaVersion( "Java 6", 50 );
+    public static final JavaVersion JAVA_7 = new JavaVersion( "Java 7", 51 );
+    public static final JavaVersion JAVA_8 = new JavaVersion( "Java 8", 52 );
+    public static final JavaVersion JAVA_9 = new JavaVersion( "Java 9", 53 );
+    public static final JavaVersion JAVA_10 = new JavaVersion( "Java 10", 54 );
+    public static final JavaVersion JAVA_11 = new JavaVersion( "Java 11", 55 );
+    //
+    private final String name;
     private final int version;
+    private final boolean unknown;
 
-    private JavaVersion(int version)
+    private JavaVersion(String name, int version)
     {
-        this.version = version;
+        this( name, version, false );
     }
 
-    private static final Map<Integer, JavaVersion> byVersion = new HashMap<Integer, JavaVersion>();
-
-    static
+    private JavaVersion(String name, int version, boolean unknown)
     {
-        for ( JavaVersion version : values() )
-        {
+        this.name = name;
+        this.version = version;
+        this.unknown = unknown;
 
-            byVersion.put( version.version, version );
-        }
+        byVersion.put( version, this );
+    }
+
+    @Override
+    public String toString()
+    {
+        return getName();
     }
 
     public static JavaVersion getByVersion(int version)
     {
-        return byVersion.containsKey( version ) ? byVersion.get( version ) : JavaVersion.UNKNOWN;
+        JavaVersion java = byVersion.get( version );
+        if ( java == null )
+        {
+            java = new JavaVersion( "Java " + ( version - 44 ) + "*", version, true );
+        }
+
+        return java;
     }
 
     public static JavaVersion getCurrentVersion()
@@ -53,7 +66,7 @@ public enum JavaVersion
         for ( int v : versions )
         {
             JavaVersion found = getByVersion( v );
-            sb.append( found == JavaVersion.UNKNOWN ? v : found );
+            sb.append( found );
             sb.append( ", " );
         }
         sb.setLength( sb.length() - 2 );
