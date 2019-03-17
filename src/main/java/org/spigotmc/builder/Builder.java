@@ -125,18 +125,24 @@ public class Builder
         System.out.println( "Java Version: " + JavaVersion.getCurrentVersion() );
 
         OptionParser parser = new OptionParser();
-        OptionSpec<Void> disableCertFlag = parser.accepts( "disable-certificate-check" );
-        OptionSpec<Void> disableJavaCheck = parser.accepts( "disable-java-check" );
-        OptionSpec<Void> dontUpdateFlag = parser.accepts( "dont-update" );
-        OptionSpec<Void> skipCompileFlag = parser.accepts( "skip-compile" );
-        OptionSpec<Void> generateSourceFlag = parser.accepts( "generate-source" );
-        OptionSpec<Void> generateDocsFlag = parser.accepts( "generate-docs" );
-        OptionSpec<Void> devFlag = parser.accepts( "dev" );
-        OptionSpec<File> outputDir = parser.acceptsAll( Arrays.asList( "o", "output-dir" ) ).withRequiredArg().ofType( File.class ).defaultsTo( CWD );
-        OptionSpec<String> jenkinsVersion = parser.accepts( "rev" ).withRequiredArg().defaultsTo( "latest" );
+        OptionSpec<Void> help = parser.accepts( "help", "Show the help" );
+        OptionSpec<Void> disableCertFlag = parser.accepts( "disable-certificate-check", "Disable HTTPS certificate check" );
+        OptionSpec<Void> disableJavaCheck = parser.accepts( "disable-java-check", "Disable Java version check" );
+        OptionSpec<Void> dontUpdateFlag = parser.accepts( "dont-update", "Don't pull updates from Git" );
+        OptionSpec<Void> skipCompileFlag = parser.accepts( "skip-compile", "Skip compilation" );
+        OptionSpec<Void> generateSourceFlag = parser.accepts( "generate-source", "Generate source jar" );
+        OptionSpec<Void> generateDocsFlag = parser.accepts( "generate-docs", "Generate Javadoc jar" );
+        OptionSpec<Void> devFlag = parser.accepts( "dev", "Development mode" );
+        OptionSpec<File> outputDir = parser.acceptsAll( Arrays.asList( "o", "output-dir" ), "Final jar output directory" ).withRequiredArg().ofType( File.class ).defaultsTo( CWD );
+        OptionSpec<String> jenkinsVersion = parser.accepts( "rev", "Version to build" ).withRequiredArg().defaultsTo( "latest" );
 
         OptionSet options = parser.parse( args );
 
+        if ( options.has( help ) )
+        {
+            parser.printHelpOn( System.out );
+            System.exit( 0 );
+        }
         if ( options.has( disableCertFlag ) )
         {
             disableHttpsCertificateCheck();
