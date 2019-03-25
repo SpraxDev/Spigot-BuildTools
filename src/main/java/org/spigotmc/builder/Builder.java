@@ -6,6 +6,7 @@ import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.ObjectArrays;
+import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.common.io.ByteStreams;
@@ -35,7 +36,6 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.file.FileSystemException;
-import java.nio.file.Path;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -163,6 +163,8 @@ public class Builder
             if ( IS_WINDOWS )
             {
                 String gitVersion = "PortableGit-2.15.0-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
+                // https://github.com/git-for-windows/git/releases/tag/v2.15.0.windows.1
+                String gitHash = System.getProperty( "os.arch" ).endsWith( "64" ) ? "ddfb4242c78eec03c533e733d0192e0e3d8ba10ad9af39e46ab305805e4ebbc3" : "9229e0f1100cea0d89d3c5f879a2cca78ac151db0a4020808cf967ef4e47b64d";
                 msysDir = new File( gitVersion, "PortableGit" );
 
                 if ( !msysDir.isDirectory() )
@@ -171,11 +173,12 @@ public class Builder
 
                     String gitName = gitVersion + ".7z.exe";
                     File gitInstall = new File( gitVersion, gitName );
+                    gitInstall.deleteOnExit();
                     gitInstall.getParentFile().mkdirs();
 
                     if ( !gitInstall.exists() )
                     {
-                        download( "https://static.spigotmc.org/git/" + gitName, gitInstall );
+                        download( "https://static.spigotmc.org/git/" + gitName, gitInstall, HashFormat.SHA256, gitHash );
                     }
 
                     System.out.println( "Extracting downloaded git install" );
@@ -244,17 +247,20 @@ public class Builder
         String m2Home = System.getenv( "M2_HOME" );
         if ( m2Home == null || !( maven = new File( m2Home ) ).exists() )
         {
-            maven = new File( "apache-maven-3.5.0" );
+            String mavenVersion = "apache-maven-3.6.0";
+            maven = new File( mavenVersion );
 
             if ( !maven.exists() )
             {
                 System.out.println( "Maven does not exist, downloading. Please wait." );
 
-                File mvnTemp = new File( "mvn.zip" );
+                File mvnTemp = new File( mavenVersion + "-bin.zip" );
                 mvnTemp.deleteOnExit();
 
-                download( "https://static.spigotmc.org/maven/apache-maven-3.5.0-bin.zip", mvnTemp );
+                // https://www.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip.sha512
+                download( "https://static.spigotmc.org/maven/" + mvnTemp.getName(), mvnTemp, HashFormat.SHA512, "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9" );
                 unzip( mvnTemp, new File( "." ) );
+                mvnTemp.delete();
             }
         }
 
@@ -349,10 +355,10 @@ public class Builder
         {
             if ( versionInfo.getServerUrl() != null )
             {
-                download( versionInfo.getServerUrl(), vanillaJar );
+                download( versionInfo.getServerUrl(), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash() );
             } else
             {
-                download( String.format( "https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion() ), vanillaJar );
+                download( String.format( "https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion() ), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash() );
 
                 // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
                 applyPatchesShell = System.getenv().get( "SHELL" );
@@ -361,11 +367,6 @@ public class Builder
                     applyPatchesShell = "bash";
                 }
             }
-        }
-        if ( !checkHash( vanillaJar, versionInfo ) )
-        {
-            System.err.println( "**** Could not download clean Minecraft jar, giving up." );
-            return;
         }
 
         Iterable<RevCommit> mappings = buildGit.log()
@@ -867,13 +868,19 @@ public class Builder
         return Iterables.getOnlyElement( repo.log().setMaxCount( 1 ).call() ).getName();
     }
 
-    public static File download(String url, File target) throws IOException
+    public static File download(String url, File target, HashFormat hashFormat, String goodHash) throws IOException
     {
         System.out.println( "Starting download of " + url );
 
         byte[] bytes = Resources.toByteArray( new URL( url ) );
+        String hash = hashFormat.getHash().hashBytes( bytes ).toString();
 
-        System.out.println( "Downloaded file: " + target + " with md5: " + Hashing.md5().hashBytes( bytes ).toString() );
+        System.out.println( "Downloaded file: " + target + " with hash: " + hash );
+
+        if ( !dev && goodHash != null && !goodHash.equals( hash ) )
+        {
+            throw new IllegalStateException( "Downloaded file: " + target + " did not match expected hash: " + goodHash );
+        }
 
         Files.write( bytes, target );
 
@@ -963,5 +970,33 @@ public class Builder
         {
             System.err.println( "Failed to create log file: " + LOG_FILE );
         }
+    }
+
+    public enum HashFormat
+    {
+        MD5
+        {
+            @Override
+            public HashFunction getHash()
+            {
+                return Hashing.md5();
+            }
+        }, SHA256
+        {
+            @Override
+            public HashFunction getHash()
+            {
+                return Hashing.sha256();
+            }
+        }, SHA512
+        {
+            @Override
+            public HashFunction getHash()
+            {
+                return Hashing.sha512();
+            }
+        };
+
+        public abstract HashFunction getHash();
     }
 }
