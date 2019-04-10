@@ -370,10 +370,7 @@ public class Builder
         }
 
         Iterable<RevCommit> mappings = buildGit.log()
-                .addPath( "mappings/" + versionInfo.getAccessTransforms() )
-                .addPath( "mappings/" + versionInfo.getClassMappings() )
-                .addPath( "mappings/" + versionInfo.getMemberMappings() )
-                .addPath( "mappings/" + versionInfo.getPackageMappings() )
+                .addPath( "mappings/" )
                 .setMaxCount( 1 ).call();
 
         Hasher mappingsHash = Hashing.md5().newHasher();
