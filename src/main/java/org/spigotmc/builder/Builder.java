@@ -517,15 +517,18 @@ public class Builder
 
         FileUtils.moveDirectory( tmpNms, nmsDir );
 
-        File spigotApi = new File( spigot, "Bukkit" );
-        if ( !spigotApi.exists() )
+        if ( versionInfo.getToolsVersion() < 93 )
         {
-            clone( "file://" + bukkit.getAbsolutePath(), spigotApi );
-        }
-        File spigotServer = new File( spigot, "CraftBukkit" );
-        if ( !spigotServer.exists() )
-        {
-            clone( "file://" + craftBukkit.getAbsolutePath(), spigotServer );
+            File spigotApi = new File( spigot, "Bukkit" );
+            if ( !spigotApi.exists() )
+            {
+                clone( "file://" + bukkit.getAbsolutePath(), spigotApi );
+            }
+            File spigotServer = new File( spigot, "CraftBukkit" );
+            if ( !spigotServer.exists() )
+            {
+                clone( "file://" + craftBukkit.getAbsolutePath(), spigotServer );
+            }
         }
 
         // Git spigotApiGit = Git.open( spigotApi );
