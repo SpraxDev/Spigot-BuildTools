@@ -42,13 +42,13 @@
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
             <!-- Last version that supports 1.7 Java. -->
-            <version>4.5.4.201711221230-r</version>
+            <version>4.5.6.201903121547-r</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk14</artifactId>
-            <version>1.7.25</version>
+            <version>1.7.26</version>
             <scope>compile</scope>
         </dependency>
         <!-- Don't mess with this dependency as it is finnicky! -->
