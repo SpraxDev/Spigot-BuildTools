@@ -591,7 +591,10 @@ public class Builder
         if ( !skipCompile )
         {
             System.out.println( "Success! Everything compiled successfully. Copying final .jar files now." );
-            copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
+            if ( versionInfo.getToolsVersion() < 101 )
+            {
+                copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
+            }
             copyJar( "Spigot/Spigot-Server/target", "spigot", new File( outputDir.value( options ), "spigot-" + versionInfo.getMinecraftVersion() + ".jar" ) );
         }
     }
