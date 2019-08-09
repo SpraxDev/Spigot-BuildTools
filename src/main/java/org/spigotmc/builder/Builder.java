@@ -197,7 +197,14 @@ public class Builder
             }
         }
 
-        runProcess( CWD, "git", "--version" );
+        try
+        {
+            runProcess( CWD, "git", "--version" );
+        } catch ( Exception ex )
+        {
+            System.out.println( "Could not successfully run git. Please ensure it is installed and functioning. " + ex.getMessage() );
+            System.exit( 1 );
+        }
 
         try
         {
