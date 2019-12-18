@@ -162,9 +162,9 @@ public class Builder
         {
             if ( IS_WINDOWS )
             {
-                String gitVersion = "PortableGit-2.15.0-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
-                // https://github.com/git-for-windows/git/releases/tag/v2.15.0.windows.1
-                String gitHash = System.getProperty( "os.arch" ).endsWith( "64" ) ? "ddfb4242c78eec03c533e733d0192e0e3d8ba10ad9af39e46ab305805e4ebbc3" : "9229e0f1100cea0d89d3c5f879a2cca78ac151db0a4020808cf967ef4e47b64d";
+                String gitVersion = "PortableGit-2.24.1.2-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
+                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
+                String gitHash = System.getProperty( "os.arch" ).endsWith( "64" ) ? "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" : "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
                 msysDir = new File( gitVersion, "PortableGit" );
 
                 if ( !msysDir.isDirectory() )
@@ -753,9 +753,7 @@ public class Builder
                 throw new IllegalStateException( "Could not find path variable!" );
             }
 
-            String path = pb.environment().get( pathEnv );
-            path += ";" + msysDir.getAbsolutePath();
-            path += ";" + new File( msysDir, "bin" ).getAbsolutePath();
+            String path = msysDir.getAbsolutePath() + ";" + new File( msysDir, "bin" ).getAbsolutePath() + ";" + pb.environment().get( pathEnv );
             pb.environment().put( pathEnv, path );
         }
 
