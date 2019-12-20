@@ -42,6 +42,7 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.text.MessageFormat;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
@@ -58,6 +59,7 @@ import javax.swing.JLabel;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import joptsimple.util.EnumConverter;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.output.TeeOutputStream;
@@ -76,7 +78,7 @@ public class Builder
     public static final File CWD = new File( "." );
     private static final boolean autocrlf = !"\n".equals( System.getProperty( "line.separator" ) );
     private static boolean dontUpdate;
-    private static boolean skipCompile;
+    private static List<Compile> compile;
     private static boolean generateSource;
     private static boolean generateDocs;
     private static boolean dev;
@@ -135,6 +137,9 @@ public class Builder
         OptionSpec<Void> devFlag = parser.accepts( "dev", "Development mode" );
         OptionSpec<File> outputDir = parser.acceptsAll( Arrays.asList( "o", "output-dir" ), "Final jar output directory" ).withRequiredArg().ofType( File.class ).defaultsTo( CWD );
         OptionSpec<String> jenkinsVersion = parser.accepts( "rev", "Version to build" ).withRequiredArg().defaultsTo( "latest" );
+        OptionSpec<Compile> toCompile = parser.accepts( "compile", "Software to compile" ).withRequiredArg().ofType( Compile.class ).withValuesConvertedBy( new EnumConverter<Compile>( Compile.class )
+        {
+        } ).withValuesSeparatedBy( ',' );
 
         OptionSet options = parser.parse( args );
 
@@ -148,10 +153,15 @@ public class Builder
             disableHttpsCertificateCheck();
         }
         dontUpdate = options.has( dontUpdateFlag );
-        skipCompile = options.has( skipCompileFlag );
         generateSource = options.has( generateSourceFlag );
         generateDocs = options.has( generateDocsFlag );
         dev = options.has( devFlag );
+        compile = options.valuesOf( toCompile );
+        if ( options.has( skipCompileFlag ) )
+        {
+            compile = Collections.singletonList( Compile.NONE );
+            System.err.println( "--skip-compile is deprecated, please use --compile NONE" );
+        }
 
         logOutput();
 
@@ -537,7 +547,17 @@ public class Builder
 
         // Git spigotApiGit = Git.open( spigotApi );
         // Git spigotServerGit = Git.open( spigotServer );
-        if ( !skipCompile )
+        if ( compile == null || compile.isEmpty() )
+        {
+            if ( versionInfo.getToolsVersion() <= 104 || dev )
+            {
+                compile = Arrays.asList( Compile.CRAFTBUKKIT, Compile.SPIGOT );
+            } else
+            {
+                compile = Collections.singletonList( Compile.SPIGOT );
+            }
+        }
+        if ( compile.contains( Compile.CRAFTBUKKIT ) )
         {
             System.out.println( "Compiling Bukkit" );
             if ( dev )
@@ -571,7 +591,7 @@ public class Builder
             runProcess( spigot, applyPatchesShell, "applyPatches.sh" );
             System.out.println( "*** Spigot patches applied!" );
 
-            if ( !skipCompile )
+            if ( compile.contains( Compile.SPIGOT ) )
             {
                 System.out.println( "Compiling Spigot & Spigot-API" );
                 if ( dev )
@@ -595,13 +615,13 @@ public class Builder
             System.out.println( " " );
         }
 
-        if ( !skipCompile )
+        System.out.println( "Success! Everything completed successfully. Copying final .jar files now." );
+        if ( versionInfo.getToolsVersion() < 101 || ( versionInfo.getToolsVersion() > 104 && compile.contains( Compile.CRAFTBUKKIT ) ) )
         {
-            System.out.println( "Success! Everything compiled successfully. Copying final .jar files now." );
-            if ( versionInfo.getToolsVersion() < 101 )
-            {
-                copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
-            }
+            copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
+        }
+        if ( compile.contains( Compile.SPIGOT ) )
+        {
             copyJar( "Spigot/Spigot-Server/target", "spigot", new File( outputDir.value( options ), "spigot-" + versionInfo.getMinecraftVersion() + ".jar" ) );
         }
     }
