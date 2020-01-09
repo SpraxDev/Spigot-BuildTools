@@ -162,6 +162,11 @@ public class Builder
             compile = Collections.singletonList( Compile.NONE );
             System.err.println( "--skip-compile is deprecated, please use --compile NONE" );
         }
+        if ( ( dev || dontUpdate ) && options.has( jenkinsVersion ) )
+        {
+            System.err.println( "Using --dev or --dont-update with --rev makes no sense, exiting." );
+            System.exit( 1 );
+        }
 
         logOutput();
 
