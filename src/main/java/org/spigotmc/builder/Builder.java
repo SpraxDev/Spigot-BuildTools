@@ -94,6 +94,12 @@ public class Builder
             return;
         }
 
+        if ( CWD.getAbsolutePath().contains( "Dropbox" ) || CWD.getAbsolutePath().contains( "OneDrive" ) )
+        {
+            System.err.println( "Please do not run BuildTools in a Dropbox, OneDrive, or similar. You can always copy the completed jars there later." );
+            return;
+        }
+
         if ( false && System.console() == null )
         {
             JFrame jFrame = new JFrame();
