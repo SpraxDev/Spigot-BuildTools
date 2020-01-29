@@ -630,7 +630,7 @@ public class Builder
         }
 
         System.out.println( "Success! Everything completed successfully. Copying final .jar files now." );
-        if ( ( versionInfo.getToolsVersion() < 101 && !compile.contains( Compile.NONE ) ) || ( versionInfo.getToolsVersion() > 104 && compile.contains( Compile.CRAFTBUKKIT ) ) )
+        if ( compile.contains( Compile.CRAFTBUKKIT ) && ( versionInfo.getToolsVersion() < 101 || versionInfo.getToolsVersion() > 104 ) )
         {
             copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
         }
