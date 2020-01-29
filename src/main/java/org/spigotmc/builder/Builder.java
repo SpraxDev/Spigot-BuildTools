@@ -387,13 +387,16 @@ public class Builder
             } else
             {
                 download( String.format( "https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion() ), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash() );
+            }
+        }
 
-                // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
-                applyPatchesShell = System.getenv().get( "SHELL" );
-                if ( applyPatchesShell == null || applyPatchesShell.trim().isEmpty() )
-                {
-                    applyPatchesShell = "bash";
-                }
+        if ( versionInfo.getServerUrl() == null )
+        {
+            // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
+            applyPatchesShell = System.getenv().get( "SHELL" );
+            if ( applyPatchesShell == null || applyPatchesShell.trim().isEmpty() )
+            {
+                applyPatchesShell = "bash";
             }
         }
 
