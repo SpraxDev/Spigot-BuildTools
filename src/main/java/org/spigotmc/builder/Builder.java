@@ -88,6 +88,29 @@ public class Builder
 
     public static void main(String[] args) throws Exception
     {
+        logOutput();
+
+        // May be null
+        String buildVersion = Builder.class.getPackage().getImplementationVersion();
+        int buildNumber = -1;
+        if ( buildVersion != null )
+        {
+            String[] split = buildVersion.split( "-" );
+            if ( split.length == 4 )
+            {
+                try
+                {
+                    buildNumber = Integer.parseInt( split[3] );
+                } catch ( NumberFormatException ex )
+                {
+                }
+            }
+        }
+
+        System.out.println( "Loading BuildTools version: " + buildVersion + " (#" + buildNumber + ")" );
+        System.out.println( "Java Version: " + JavaVersion.getCurrentVersion() );
+        System.out.println( "Current Path: " + CWD.getAbsolutePath() );
+
         if ( CWD.getAbsolutePath().contains( "'" ) || CWD.getAbsolutePath().contains( "#" ) || CWD.getAbsolutePath().contains( "~" ) || CWD.getAbsolutePath().contains( "(" ) || CWD.getAbsolutePath().contains( ")" ) )
         {
             System.err.println( "Please do not run in a path with special characters!" );
@@ -112,25 +135,6 @@ public class Builder
             Desktop.getDesktop().browse( new URI( "https://www.spigotmc.org/wiki/buildtools/" ) );
             return;
         }
-
-        // May be null
-        String buildVersion = Builder.class.getPackage().getImplementationVersion();
-        int buildNumber = -1;
-        if ( buildVersion != null )
-        {
-            String[] split = buildVersion.split( "-" );
-            if ( split.length == 4 )
-            {
-                try
-                {
-                    buildNumber = Integer.parseInt( split[3] );
-                } catch ( NumberFormatException ex )
-                {
-                }
-            }
-        }
-        System.out.println( "Loading BuildTools version: " + buildVersion + " (#" + buildNumber + ")" );
-        System.out.println( "Java Version: " + JavaVersion.getCurrentVersion() );
 
         OptionParser parser = new OptionParser();
         OptionSpec<Void> help = parser.accepts( "help", "Show the help" );
@@ -173,8 +177,6 @@ public class Builder
             System.err.println( "Using --dev or --dont-update with --rev makes no sense, exiting." );
             System.exit( 1 );
         }
-
-        logOutput();
 
         try
         {
