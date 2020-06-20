@@ -34,8 +34,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <!-- Last version that supports 1.7 Java. -->
-            <version>20.0</version>
+            <version>21.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -47,21 +46,19 @@
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
-            <!-- Last version that supports 1.7 Java. -->
-            <version>4.5.6.201903121547-r</version>
+            <version>5.8.0.202006091008-r</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk14</artifactId>
-            <version>1.7.26</version>
+            <version>1.7.30</version>
             <scope>compile</scope>
         </dependency>
-        <!-- Don't mess with this dependency as it is finnicky! -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.4</version>
+            <version>1.18.12</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -73,7 +70,7 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.8.5</version>
+            <version>2.8.6</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
@@ -84,7 +81,7 @@
             <plugin>
                 <groupId>net.md-5</groupId>
                 <artifactId>scriptus</artifactId>
-                <version>0.2</version>
+                <version>0.4.1</version>
                 <configuration>
                     <format>git-${project.name}-%s-${build.number}</format>
                 </configuration>
@@ -100,7 +97,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.1.0</version>
+                <version>3.2.0</version>
                 <configuration>
                     <archive>
                         <manifestEntries>
@@ -114,7 +111,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.2.0</version>
+                <version>3.2.4</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -131,6 +128,7 @@
                                 <exclude>**/*.java</exclude>
                                 <exclude>**/*.SF</exclude>
                                 <exclude>**/*.DSA</exclude>
+                                <exclude>META-INF/MANIFEST.MF</exclude>
                             </excludes>
                         </filter>
                     </filters>

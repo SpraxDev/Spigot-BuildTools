@@ -9,17 +9,11 @@ public class Bootstrap
     {
         JavaVersion javaVersion = JavaVersion.getCurrentVersion();
 
-        if ( javaVersion.getVersion() < JavaVersion.JAVA_7.getVersion() )
-        {
-            System.err.println( "Outdated Java detected (" + javaVersion + "). BuildTools requires at least Java 7. Please update Java and try again." );
-            System.err.println( "You may use java -version to double check your Java version." );
-            System.exit( 1 );
-        }
-
         if ( javaVersion.getVersion() < JavaVersion.JAVA_8.getVersion() )
         {
-            System.err.println( "*** WARNING *** Outdated Java detected (" + javaVersion + "). Minecraft >= 1.12 requires at least Java 8." );
-            System.err.println( "*** WARNING *** You may use java -version to double check your Java version." );
+            System.err.println( "Outdated Java detected (" + javaVersion + "). BuildTools requires at least Java 8. Please update Java and try again." );
+            System.err.println( "You may use java -version to double check your Java version." );
+            System.exit( 1 );
         }
 
         if ( javaVersion.isUnknown() )

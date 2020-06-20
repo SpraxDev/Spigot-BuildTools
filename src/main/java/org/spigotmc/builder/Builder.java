@@ -2,8 +2,6 @@ package org.spigotmc.builder;
 
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Predicate;
-import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.ObjectArrays;
 import com.google.common.hash.HashFunction;
@@ -46,6 +44,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import javax.net.ssl.HostnameVerifier;
@@ -363,7 +362,7 @@ public class Builder
         }
 
         VersionInfo versionInfo = new Gson().fromJson(
-                Files.toString( new File( "BuildData/info.json" ), Charsets.UTF_8 ),
+                Files.asCharSource( new File( "BuildData/info.json" ), Charsets.UTF_8 ).read(),
                 VersionInfo.class
         );
         // Default to 1.8 builds.
@@ -406,7 +405,7 @@ public class Builder
                 .addPath( "mappings/" )
                 .setMaxCount( 1 ).call();
 
-        Hasher mappingsHash = Hashing.md5().newHasher();
+        Hasher mappingsHash = HashFormat.MD5.getHash().newHasher();
         for ( RevCommit rev : mappings )
         {
             mappingsHash.putString( rev.getName(), Charsets.UTF_8 );
@@ -455,7 +454,7 @@ public class Builder
             {
 
                 @Override
-                public boolean apply(String input)
+                public boolean test(String input)
                 {
                     return input.startsWith( "net/minecraft/server" );
                 }
@@ -529,9 +528,9 @@ public class Builder
             List<?> modifiedLines = DiffUtils.patch( Files.readLines( clean, Charsets.UTF_8 ), parsedPatch );
 
             BufferedWriter bw = new BufferedWriter( new FileWriter( t ) );
-            for ( String line : (List<String>) modifiedLines )
+            for ( Object line : modifiedLines )
             {
-                bw.write( line );
+                bw.write( (String) line );
                 bw.newLine();
             }
             bw.close();
@@ -540,7 +539,7 @@ public class Builder
         FileUtils.copyDirectory( nmsDir, tmpNms );
 
         craftBukkitGit.branchDelete().setBranchNames( "patched" ).setForce( true ).call();
-        craftBukkitGit.checkout().setCreateBranch( true ).setForce( true ).setName( "patched" ).call();
+        craftBukkitGit.checkout().setCreateBranch( true ).setForceRefUpdate( true ).setName( "patched" ).call();
         craftBukkitGit.add().addFilepattern( "src/main/java/net/" ).call();
         craftBukkitGit.commit().setMessage( "CraftBukkit $ " + new Date() ).call();
         craftBukkitGit.checkout().setName( buildInfo.getRefs().getCraftBukkit() ).call();
@@ -644,7 +643,7 @@ public class Builder
 
     private static boolean checkHash(File vanillaJar, VersionInfo versionInfo) throws IOException
     {
-        String hash = Files.hash( vanillaJar, Hashing.md5() ).toString();
+        String hash = Files.asByteSource( vanillaJar ).hash( HashFormat.MD5.getHash() ).toString();
         if ( !dev && versionInfo.getMinecraftHash() != null && !hash.equals( versionInfo.getMinecraftHash() ) )
         {
             System.err.println( "**** Warning, Minecraft jar hash of " + hash + " does not match stored hash of " + versionInfo.getMinecraftHash() );
@@ -828,7 +827,7 @@ public class Builder
                 }
             } catch ( IOException ex )
             {
-                throw Throwables.propagate( ex );
+                throw new RuntimeException( ex );
             }
         }
     }
@@ -851,7 +850,7 @@ public class Builder
 
                 if ( filter != null )
                 {
-                    if ( !filter.apply( entry.getName() ) )
+                    if ( !filter.test( entry.getName() ) )
                     {
                         continue;
                     }
@@ -1021,6 +1020,7 @@ public class Builder
         MD5
         {
             @Override
+            @SuppressWarnings("deprecation")
             public HashFunction getHash()
             {
                 return Hashing.md5();
