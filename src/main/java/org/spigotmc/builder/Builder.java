@@ -541,7 +541,7 @@ public class Builder
         craftBukkitGit.branchDelete().setBranchNames( "patched" ).setForce( true ).call();
         craftBukkitGit.checkout().setCreateBranch( true ).setForceRefUpdate( true ).setName( "patched" ).call();
         craftBukkitGit.add().addFilepattern( "src/main/java/net/" ).call();
-        craftBukkitGit.commit().setMessage( "CraftBukkit $ " + new Date() ).call();
+        craftBukkitGit.commit().setSign( false ).setMessage( "CraftBukkit $ " + new Date() ).call();
         craftBukkitGit.checkout().setName( buildInfo.getRefs().getCraftBukkit() ).call();
 
         FileUtils.moveDirectory( tmpNms, nmsDir );
