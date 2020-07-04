@@ -734,7 +734,7 @@ public class Builder
             }
             String[] shim = new String[]
             {
-                "cmd.exe", "/C"
+                "cmd.exe", "/D", "/C"
             };
             command = ObjectArrays.concat( shim, command, String.class );
         }
