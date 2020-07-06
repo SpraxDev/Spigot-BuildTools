@@ -68,6 +68,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.transport.FetchResult;
 
 public class Builder
 {
@@ -82,6 +83,7 @@ public class Builder
     private static boolean generateDocs;
     private static boolean dev;
     private static String applyPatchesShell = "sh";
+    private static boolean didClone = false;
     //
     private static File msysDir;
 
@@ -149,6 +151,7 @@ public class Builder
         OptionSpec<Compile> toCompile = parser.accepts( "compile", "Software to compile" ).withRequiredArg().ofType( Compile.class ).withValuesConvertedBy( new EnumConverter<Compile>( Compile.class )
         {
         } ).withValuesSeparatedBy( ',' );
+        OptionSpec<Void> compileIfChanged = parser.accepts( "compile-if-changed", "Run BuildTools only when changes are detected in the repository" );
 
         OptionSet options = parser.parse( args );
 
@@ -249,25 +252,25 @@ public class Builder
         workDir.mkdir();
 
         File bukkit = new File( "Bukkit" );
-        if ( !bukkit.exists() )
+        if ( !bukkit.exists() || !containsGit( bukkit ) )
         {
             clone( "https://hub.spigotmc.org/stash/scm/spigot/bukkit.git", bukkit );
         }
 
         File craftBukkit = new File( "CraftBukkit" );
-        if ( !craftBukkit.exists() )
+        if ( !craftBukkit.exists() || !containsGit( craftBukkit ) )
         {
             clone( "https://hub.spigotmc.org/stash/scm/spigot/craftbukkit.git", craftBukkit );
         }
 
         File spigot = new File( "Spigot" );
-        if ( !spigot.exists() )
+        if ( !spigot.exists() || !containsGit( spigot ) )
         {
             clone( "https://hub.spigotmc.org/stash/scm/spigot/spigot.git", spigot );
         }
 
         File buildData = new File( "BuildData" );
-        if ( !buildData.exists() )
+        if ( !buildData.exists() || !containsGit( buildData ) )
         {
             clone( "https://hub.spigotmc.org/stash/scm/spigot/builddata.git", buildData );
         }
@@ -355,10 +358,18 @@ public class Builder
                 }
             }
 
-            pull( buildGit, buildInfo.getRefs().getBuildData() );
-            pull( bukkitGit, buildInfo.getRefs().getBukkit() );
-            pull( craftBukkitGit, buildInfo.getRefs().getCraftBukkit() );
-            pull( spigotGit, buildInfo.getRefs().getSpigot() );
+            boolean buildDataChanged = pull( buildGit, buildInfo.getRefs().getBuildData() );
+            boolean bukkitChanged = pull( bukkitGit, buildInfo.getRefs().getBukkit() );
+            boolean craftBukkitChanged = pull( craftBukkitGit, buildInfo.getRefs().getCraftBukkit() );
+            boolean spigotChanged = pull( spigotGit, buildInfo.getRefs().getSpigot() );
+
+            // Checks if any of the 4 repositories have been updated via a fetch, the --compile-if-changed flag is set and none of the repositories were cloned in this run.
+            if ( !buildDataChanged && !bukkitChanged && !craftBukkitChanged && !spigotChanged && options.has( compileIfChanged ) && !didClone )
+            {
+                System.out.println( "*** No changes detected in any of the repositories!" );
+                System.out.println( "*** Exiting due to the --compile-if-changes" );
+                System.exit( 0 );
+            }
         }
 
         VersionInfo versionInfo = new Gson().fromJson(
@@ -700,7 +711,7 @@ public class Builder
         }
     }
 
-    public static void pull(Git repo, String ref) throws Exception
+    public static boolean pull(Git repo, String ref) throws Exception
     {
         System.out.println( "Pulling updates for " + repo.getRepository().getDirectory() );
 
@@ -712,7 +723,7 @@ public class Builder
             System.err.println( "*** Warning, could not find origin/master ref, but continuing anyway." );
             System.err.println( "*** If further errors occur please delete " + repo.getRepository().getDirectory().getParent() + " and retry." );
         }
-        repo.fetch().call();
+        FetchResult result = repo.fetch().call();
 
         System.out.println( "Successfully fetched updates!" );
 
@@ -722,6 +733,9 @@ public class Builder
             repo.reset().setRef( "origin/master" ).setMode( ResetCommand.ResetType.HARD ).call();
         }
         System.out.println( "Checked out: " + ref );
+
+        // Return true if fetch changed any tracking refs.
+        return !result.getTrackingRefUpdates().isEmpty();
     }
 
     public static int runProcess(File workDir, String... command) throws Exception
@@ -899,6 +913,7 @@ public class Builder
             config.setBoolean( "core", null, "autocrlf", autocrlf );
             config.save();
 
+            didClone = true;
             System.out.println( "Cloned git repository " + url + " to " + target.getAbsolutePath() + ". Current HEAD: " + commitHash( result ) );
         } finally
         {
@@ -1042,5 +1057,10 @@ public class Builder
         };
 
         public abstract HashFunction getHash();
+    }
+
+    private static boolean containsGit(File file)
+    {
+        return new File( file, ".git" ).isDirectory();
     }
 }
