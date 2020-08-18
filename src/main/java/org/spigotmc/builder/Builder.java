@@ -320,6 +320,7 @@ public class Builder
                 {
                     System.err.println( "Could not get version " + askedVersion + " does it exist? Try another version or use 'latest'" );
                     ex.printStackTrace();
+                    System.exit( 1 );
                     return;
                 }
                 System.out.println( "Found version" );
