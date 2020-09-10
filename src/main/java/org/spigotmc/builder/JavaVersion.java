@@ -20,6 +20,7 @@ public class JavaVersion
     public static final JavaVersion JAVA_12 = new JavaVersion( "Java 12", 56 );
     public static final JavaVersion JAVA_13 = new JavaVersion( "Java 13", 57 );
     public static final JavaVersion JAVA_14 = new JavaVersion( "Java 14", 58 );
+    public static final JavaVersion JAVA_15 = new JavaVersion( "Java 15", 59 );
     //
     private final String name;
     private final int version;
