@@ -745,6 +745,9 @@ public class Builder {
 
                 File outFile = new File(targetFolder, entry.getName());
 
+                if (!outFile.toPath().normalize().startsWith(targetFolder.toPath()))
+                    throw new IllegalStateException("Bad zip entry (malicious archive?)");  // e.g. containing '..'
+
                 if (entry.isDirectory()) {
                     Files.createDirectories(outFile.toPath());
                     continue;
