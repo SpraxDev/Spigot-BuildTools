@@ -16,6 +16,11 @@
         <maven.compiler.source>1.6</maven.compiler.source>
         <maven.compiler.target>1.6</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Used for static code analysis on https://sonarcloud.io/dashboard?id=SpraxDev_Spigot-BuildTools -->
+        <sonar.projectKey>SpraxDev_Spigot-BuildTools</sonar.projectKey>
+        <sonar.organization>sprax2013</sonar.organization>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
     </properties>
 
     <dependencies>
