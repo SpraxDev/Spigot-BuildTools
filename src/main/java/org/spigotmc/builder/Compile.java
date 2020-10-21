@@ -1,8 +1,5 @@
 package org.spigotmc.builder;
 
-public enum Compile
-{
-    NONE,
-    CRAFTBUKKIT,
-    SPIGOT;
+public enum Compile {
+    NONE, CRAFTBUKKIT, SPIGOT
 }

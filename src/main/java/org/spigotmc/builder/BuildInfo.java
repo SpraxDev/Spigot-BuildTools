@@ -1,27 +1,63 @@
 package org.spigotmc.builder;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-
-@Data
-@AllArgsConstructor
-public class BuildInfo
-{
-
-    private String name;
-    private String description;
+public class BuildInfo {
+    private final String name;
+    private final String description;
     private int toolsVersion = -1;
     private int[] javaVersions;
-    private Refs refs;
+    private final Refs refs;
 
-    @Data
-    @AllArgsConstructor
-    public static class Refs
-    {
+    public BuildInfo(String name, String description, int toolsVersion, int[] javaVersions, Refs refs) {
+        this.name = name;
+        this.description = description;
+        this.toolsVersion = toolsVersion;
+        this.javaVersions = javaVersions;
+        this.refs = refs;
+    }
 
-        private String BuildData;
-        private String Bukkit;
-        private String CraftBukkit;
-        private String Spigot;
+    public int getToolsVersion() {
+        return this.toolsVersion;
+    }
+
+    public int[] getJavaVersions() {
+        return this.javaVersions;
+    }
+
+    public void setJavaVersions(int[] javaVersions) {
+        this.javaVersions = javaVersions;
+    }
+
+    public Refs getRefs() {
+        return this.refs;
+    }
+
+    public static class Refs {
+        private final String BuildData;
+        private final String Bukkit;
+        private final String CraftBukkit;
+        private final String Spigot;
+
+        public Refs(String BuildData, String Bukkit, String CraftBukkit, String Spigot) {
+            this.BuildData = BuildData;
+            this.Bukkit = Bukkit;
+            this.CraftBukkit = CraftBukkit;
+            this.Spigot = Spigot;
+        }
+
+        public String getBuildData() {
+            return BuildData;
+        }
+
+        public String getBukkit() {
+            return Bukkit;
+        }
+
+        public String getCraftBukkit() {
+            return CraftBukkit;
+        }
+
+        public String getSpigot() {
+            return Spigot;
+        }
     }
 }
