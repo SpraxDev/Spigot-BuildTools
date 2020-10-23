@@ -22,15 +22,14 @@ public class Bootstrap {
     public static final File CWD = new File(".").getAbsoluteFile().toPath().normalize().toFile();
     private static final File LOG_FILE = new File(CWD, "BuildTools.log.txt");
 
-    private static OptionParser optionParser;
-    public static boolean disableCertCheck, disableJavaCheck, doNotUpdate,
+    private final OptionParser optionParser;
+    public final boolean disableCertCheck, disableJavaCheck, doNotUpdate,
             skipCompile, generateSrc, generateDoc, dev, compileIfChanged;
-    public static File outputDir;
-    public static String rev;
-    public static List<Compile> compile;
+    public final File outputDir;
+    public final String rev;
+    public final List<Compile> compile;
 
-    public static void main(String[] args) throws Exception {
-        /* Parse args */
+    public Bootstrap(String[] args) throws IOException {
         optionParser = new OptionParser();
 
         OptionSpec<Void> helpFlag = optionParser.accepts("help", "Show the help");
@@ -72,25 +71,31 @@ public class Bootstrap {
         dev = options.has(devFlag);
         compileIfChanged = options.has(compileIfChangedFlag);
 
-        outputDir = outputDirFlag.value(options);
-        compile = compileFlag.values(options);
-        if (compile.isEmpty()) {
-            compile = Collections.singletonList(Compile.SPIGOT);
-        } else if (compile.size() > 1 && compile.contains(Compile.NONE)) {
-            System.err.println("You can't use '--compile NONE' while listing things to compile");
-            System.exit(1);
-        }
+        List<Compile> tempCompile = compileFlag.values(options);
         if (options.has(skipCompileFlag)) {
             compile = Collections.singletonList(Compile.NONE);
             System.err.println("--skip-compile is deprecated, please use --compile NONE");
+        } else if (tempCompile.isEmpty()) {
+            compile = Collections.singletonList(Compile.SPIGOT);
+        } else if (tempCompile.size() > 1 && tempCompile.contains(Compile.NONE)) {
+            compile = null;
+            System.err.println("You can't use '--compile NONE' while listing things to compile");
+            System.exit(1);
+        } else {
+            compile = Collections.unmodifiableList(tempCompile);
         }
 
+        outputDir = outputDirFlag.value(options);
         rev = options.valueOf(revFlag);
 
         if ((dev || doNotUpdate) && options.has(revFlag)) {
             System.err.println("Using --dev or --dont-update with --rev makes no sense, exiting.");
             System.exit(1);
         }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Bootstrap bootstrap = new Bootstrap(args);
 
         /* Check java version (needed?) */
         JavaVersion javaVersion = JavaVersion.getCurrentVersion();
@@ -118,10 +123,10 @@ public class Bootstrap {
         }
 
         // Start builder
-        Builder.main();
+        Builder.runBuild(bootstrap);
     }
 
-    public static void printHelp() throws IOException {
+    private void printHelp() throws IOException {
         optionParser.printHelpOn(System.out);
     }
 

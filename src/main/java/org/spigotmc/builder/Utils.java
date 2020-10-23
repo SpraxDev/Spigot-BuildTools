@@ -21,6 +21,10 @@ import java.util.Map;
 import java.util.Objects;
 
 public class Utils {
+    private Utils() {
+        throw new IllegalStateException("Utility class");
+    }
+
     public static boolean doesCommandFail(File workingDir, String cmd, String... args) {
         try {
             return runCommand(workingDir, cmd, args) != 0;
@@ -72,23 +76,22 @@ public class Utils {
         // This globally disables certificate checking
         // http://stackoverflow.com/questions/19723415/java-overriding-function-to-disable-ssl-certificate-check
         try {
-            TrustManager[] trustAllCerts = new TrustManager[]
-                    {
-                            new X509TrustManager() {
-                                @Override
-                                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                                    return null;
-                                }
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                    new X509TrustManager() {
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[0];
+                        }
 
-                                @Override
-                                public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                                }
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                        }
 
-                                @Override
-                                public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                                }
-                            }
-                    };
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                        }
+                    }
+            };
 
             // Trust SSL certs
             SSLContext sc = SSLContext.getInstance("SSL");

@@ -10,14 +10,14 @@ public enum GitRepository {
     SPIGOT("Spigot", "https://hub.spigotmc.org/stash/scm/spigot/spigot.git"),
     BUILD_DATA("BuildData", "https://hub.spigotmc.org/stash/scm/spigot/builddata.git");
 
-    public final String name, gitUrl;
+    public final String identifier, gitUrl;
 
-    GitRepository(String name, String gitUrl) {
-        this.name = name;
+    GitRepository(String identifier, String gitUrl) {
+        this.identifier = identifier;
         this.gitUrl = gitUrl;
     }
 
     public File getRepoDir() {
-        return new File(CWD, this.name);
+        return new File(CWD, this.identifier);
     }
 }
