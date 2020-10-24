@@ -82,6 +82,7 @@ public class Builder {
                 CWD.getAbsolutePath().contains("(") ||
                 CWD.getAbsolutePath().contains(")")) {
             System.err.println("Please do not run in a path with special characters!");
+            System.exit(1);
             return;
         }
 
@@ -105,7 +106,7 @@ public class Builder {
                         "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
                         "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
 
-                gitCmd = new File(new File(new File(CWD, gitVersion), "PortableGit"), "git").getAbsolutePath();
+                gitCmd = new File(new File(new File(CWD, gitVersion), "PortableGit"), "git.exe").getAbsolutePath();
 
                 if (!new File(gitCmd).getParentFile().isDirectory()) {
                     System.out.println("*** Could not find git installation, downloading PortableGit. ***");
@@ -129,6 +130,7 @@ public class Builder {
                 if (Utils.doesCommandFail(CWD, gitCmd, "--version")) {
                     System.err.println("Could not run command 'git' and PortableGit at '" + gitCmd + "'\nPlease install git on your system: https://git-for-windows.github.io/");
                     System.exit(1);
+                    return;
                 }
 
                 System.out.println("*** Using downloaded git '" + gitCmd + "' ***");
@@ -136,6 +138,7 @@ public class Builder {
             } else {
                 System.err.println("Could not run command 'git', please install git on your system");
                 System.exit(1);
+                return;
             }
         }
 
@@ -163,7 +166,7 @@ public class Builder {
             String mavenVersion = "apache-maven-3.6.0";
 
             File maven = new File(CWD, mavenVersion);
-            mvnCmd = new File(new File(maven, "bin"), "mvn").getAbsolutePath();
+            mvnCmd = new File(new File(maven, "bin"), "mvn" + (IS_WINDOWS ? ".cmd" : "")).getAbsolutePath();
 
             if (!maven.exists()) {
                 System.out.println("Maven does not exist, downloading. Please wait.");
@@ -181,6 +184,7 @@ public class Builder {
             if (Utils.doesCommandFail(CWD, mvnCmd, "-B", "--version")) {
                 System.err.println("Could not run command 'mvn' or '" + mvnCmd + "'\nPlease install maven on your system");
                 System.exit(1);
+                return;
             }
 
             System.out.println("*** Using downloaded maven '" + mvnCmd + "' ***");
@@ -222,6 +226,7 @@ public class Builder {
                         if (buildNumber != -1 && buildInfo.getToolsVersion() != -1 && buildNumber < buildInfo.getToolsVersion()) {
                             System.err.println("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
                             System.exit(1);
+                            return;
                         }
 
                         if (!bootstrap.disableJavaCheck) {
@@ -246,6 +251,7 @@ public class Builder {
                                 System.err.println("*** Please rerun BuildTools using an appropriate Java version. " +
                                         "For obvious reasons outdated MC versions do not support Java versions that did not exist at their release.");
                                 System.exit(1);
+                                return;
                             }
                         }
                     }
@@ -395,7 +401,7 @@ public class Builder {
 
                 // Manually append prelude if it is not found in the first few lines.
                 boolean preludeFound = false;
-                for (int i = 0; i < Math.min(3, readFile.size()); i++) {
+                for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
                     if (readFile.get(i).startsWith("+++")) {
                         preludeFound = true;
                         break;
@@ -483,8 +489,8 @@ public class Builder {
             System.exit(1);
         }
 
-        for (int i = 0; i < 35; i++) {
-            System.out.println(" ");
+        for (int i = 0; i < 35; ++i) {
+            System.out.println();
         }
 
         System.out.println("Success! Everything completed successfully." +
@@ -592,7 +598,8 @@ public class Builder {
         Files.createDirectories(targetPath);
 
         try (ZipFile zip = new ZipFile(zipFile)) {
-            for (Enumeration<? extends ZipEntry> entries = zip.entries(); entries.hasMoreElements(); ) {
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
 
                 if (filter != null) {

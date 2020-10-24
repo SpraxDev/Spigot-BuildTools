@@ -28,8 +28,7 @@ public class Utils {
     public static boolean doesCommandFail(File workingDir, String cmd, String... args) {
         try {
             return runCommand(workingDir, cmd, args) != 0;
-        } catch (IOException ex) {
-            ex.printStackTrace();
+        } catch (IOException ignore) {
         }
 
         return true;
