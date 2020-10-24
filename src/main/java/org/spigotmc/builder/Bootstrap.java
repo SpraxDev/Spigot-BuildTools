@@ -14,9 +14,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class Bootstrap {
     public static final File CWD = new File(".").getAbsoluteFile().toPath().normalize().toFile();
@@ -125,8 +127,14 @@ public class Bootstrap {
             System.exit(1);
         }
 
-        // Start builder
+        /* Start Builder */
+        final long buildStart = System.nanoTime();  // Using nanos to be independent from system clock
+
         Builder.runBuild(bootstrap);
+
+        final long buildEnd = System.nanoTime();
+        System.out.println("Finished in " + new DecimalFormat("#0.00")
+                .format(TimeUnit.NANOSECONDS.toMillis(buildEnd - buildStart) / 1000.0) + " seconds");
     }
 
     private void printHelp() throws IOException {

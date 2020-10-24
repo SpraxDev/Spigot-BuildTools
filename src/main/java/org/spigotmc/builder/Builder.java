@@ -42,7 +42,6 @@ import java.util.zip.ZipFile;
 
 import static org.spigotmc.builder.Bootstrap.CWD;
 
-// TODO: Fix/reword console logging
 public class Builder {
     public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
     private static final boolean autocrlf = !"\n".equals(System.getProperty("line.separator"));
