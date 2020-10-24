@@ -86,11 +86,10 @@ public class Builder {
             return;
         }
 
-        // FIXME: Should I even care? This is prone to errors because it checks for the name, not if it actually is a synced directory
         if (CWD.getAbsolutePath().contains("Dropbox") ||
-                CWD.getAbsolutePath().contains("OneDrive")) {
-            System.err.println("Please do not run BuildTools in a Dropbox, OneDrive, or similar. You can always copy the completed jars there later.");
-            return;
+                CWD.getAbsolutePath().contains("OneDrive")) { // may just be a directory or file containing one of these strings
+            System.err.println("*** WARNING: Please do not run BuildTools in a Dropbox, OneDrive, or similar. You can always copy the completed jars there later.");
+            Thread.sleep(1500); // Give user time to read the warning
         }
 
         if (bootstrap.disableCertCheck) {
