@@ -53,6 +53,9 @@ public class Builder {
     private static String gitCmd = "git";
     private static String mvnCmd = "mvn";
 
+    private static boolean overwriteGitUsername;
+    private static boolean overwriteGitEmail;
+
     private Builder() {
         throw new IllegalStateException("Utility class");
     }
@@ -142,26 +145,20 @@ public class Builder {
             }
         }
 
-        // FIXME: We don't want to set it globally!! This can lead to further user errors and confusion outside of BuildTools
-        try {
-            Utils.runCommand(CWD, "git", "config", "--global", "--includes", "user.name");
-        } catch (Exception ex) {
-            System.out.println("Git name not set, setting it to default value.");
-            Utils.runCommand(CWD, "git", "config", "--global", "user.name", "BuildTools");
+        if (Utils.doesCommandFail(CWD, "git", "config", "--global", "--includes", "user.name")) {
+            System.out.println("Git name not set, using default value.");
+            overwriteGitUsername = true;
         }
 
-        // FIXME: We don't want to set it globally!! This can lead to further user errors and confusion outside of BuildTools
-        try {
-            Utils.runCommand(CWD, "git", "config", "--global", "--includes", "user.email");
-        } catch (Exception ex) {
-            System.out.println("Git email not set, setting it to default value.");
-            Utils.runCommand(CWD, "git", "config", "--global", "user.email", "unconfigured@null.spigotmc.org");
+        if (Utils.doesCommandFail(CWD, "git", "config", "--global", "--includes", "user.email")) {
+            System.out.println("Git email not set, using default value.");
+            overwriteGitEmail = true;
         }
 
         // This variable is used for '--compile-if-changed' and later updated too
         boolean gitReposDidChange = setupWorkingDir();  // Clone all missing repositories
 
-        // Check for env var M2_HOME too if 'mvn' fails and only download if not usable
+        // TODO: Check for env var M2_HOME too if 'mvn' fails - only download if not usable
         if (Utils.doesCommandFail(CWD, mvnCmd, "-B", "--version")) {
             String mavenVersion = "apache-maven-3.6.0";
 
@@ -634,6 +631,14 @@ public class Builder {
         try (Git result = Git.cloneRepository().setURI(url).setDirectory(target).call()) {
             StoredConfig config = result.getRepository().getConfig();
             config.setBoolean("core", null, "autocrlf", autocrlf);
+
+            if (overwriteGitUsername) {
+                config.setString("user", null, "name", "BuildTools");
+            }
+            if (overwriteGitEmail) {
+                config.setString("user", null, "email", "unconfigured@null.spigotmc.org");
+            }
+
             config.save();
 
             System.out.println("Cloned git repository " + url + " to " + target.getAbsolutePath() + ". Current HEAD: " + commitHash(result));
