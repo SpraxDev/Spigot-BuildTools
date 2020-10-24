@@ -44,9 +44,10 @@ import static org.spigotmc.builder.Bootstrap.CWD;
 
 // TODO: Fix/reword console logging
 public class Builder {
-    private static final String JAVA_CMD = new File(new File(System.getProperty("java.home"), "bin"), "java").getAbsolutePath();
     public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
     private static final boolean autocrlf = !"\n".equals(System.getProperty("line.separator"));
+    private static final String JAVA_CMD = new File(new File(System.getProperty("java.home"), "bin"),
+            "java" + (IS_WINDOWS ? ".exe" : "")).getAbsolutePath();
 
     // These variables may be filled with the path to a portable installation
     private static String gitCmd = "git";

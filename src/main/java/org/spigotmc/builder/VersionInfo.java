@@ -96,4 +96,15 @@ public class VersionInfo {
     public int getToolsVersion() {
         return toolsVersion;
     }
+
+    @Override
+    public String toString() {
+        return "VersionInfo{" +
+                "minecraftVersion='" + minecraftVersion + '\'' +
+                ", accessTransforms='" + accessTransforms + '\'' +
+                ", minecraftHash='" + minecraftHash + '\'' +
+                ", serverUrl='" + serverUrl + '\'' +
+                ", toolsVersion=" + toolsVersion +
+                '}';
+    }
 }
