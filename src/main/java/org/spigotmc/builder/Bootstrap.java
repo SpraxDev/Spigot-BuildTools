@@ -90,7 +90,7 @@ public class Bootstrap {
             compile = Collections.unmodifiableList(tempCompile);
         }
 
-        outputDir = outputDirFlag.value(options);
+        outputDir = outputDirFlag.value(options).toPath().toAbsolutePath().normalize().toFile();
         rev = options.valueOf(revFlag);
 
         if ((dev || doNotUpdate) && options.has(revFlag)) {
