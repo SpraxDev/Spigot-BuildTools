@@ -43,9 +43,12 @@ public class Bootstrap {
         OptionSpec<Void> compileIfChangedFlag = optionParser.accepts("compile-if-changed", "Run BuildTools only when changes are detected in the repository");
 
         OptionSpec<File> outputDirFlag = optionParser.acceptsAll(Arrays.asList("o", "output-dir"), "Final jar output directory")
-                .withRequiredArg().ofType(File.class).defaultsTo(CWD);
+                .withRequiredArg()
+                .ofType(File.class)
+                .defaultsTo(CWD);
         OptionSpec<String> revFlag = optionParser.accepts("rev", "Version to build")
-                .withRequiredArg().defaultsTo("latest");
+                .withRequiredArg()
+                .defaultsTo("latest");
         OptionSpec<Compile> compileFlag = optionParser.accepts("compile", "Software to compile")
                 .withRequiredArg()
                 .ofType(Compile.class)

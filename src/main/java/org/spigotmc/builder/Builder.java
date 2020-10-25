@@ -58,8 +58,8 @@ public class Builder {
     }
 
     public static void runBuild(Bootstrap bootstrap) throws Exception {
-        // May be null
         // FIXME: Configure GitHub-Actions and indicate that this is a fork
+        // May be null
         String buildVersion = Builder.class.getPackage().getImplementationVersion();
         int buildNumber = -1;
         if (buildVersion != null) {
@@ -602,10 +602,8 @@ public class Builder {
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
 
-                if (filter != null) {
-                    if (!filter.test(entry.getName())) {
-                        continue;
-                    }
+                if (filter != null && !filter.test(entry.getName())) {
+                    continue;
                 }
 
                 File outFile = new File(targetPath.toFile(), entry.getName());
@@ -613,19 +611,19 @@ public class Builder {
                 if (!outFile.toPath().normalize().startsWith(targetPath))
                     throw new IllegalStateException("Bad zip entry(=" + entry.getName() + ") - malicious archive?");  // e.g. containing '..'
 
-                if (entry.isDirectory()) {
+                if (!entry.isDirectory()) {
+                    if (outFile.getParentFile() != null) {
+                        Files.createDirectories(outFile.getParentFile().toPath());
+                    }
+
+                    try (InputStream in = zip.getInputStream(entry)) {
+                        Files.copy(in, outFile.toPath());
+                    }
+
+                    System.out.println("Extracted: " + outFile);
+                } else {
                     Files.createDirectories(outFile.toPath());
-                    continue;
                 }
-                if (outFile.getParentFile() != null) {
-                    Files.createDirectories(outFile.getParentFile().toPath());
-                }
-
-                try (InputStream in = zip.getInputStream(entry)) {
-                    Files.copy(in, outFile.toPath());
-                }
-
-                System.out.println("Extracted: " + outFile);
             }
         }
     }

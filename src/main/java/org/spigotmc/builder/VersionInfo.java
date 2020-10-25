@@ -102,7 +102,14 @@ public class VersionInfo {
         return "VersionInfo{" +
                 "minecraftVersion='" + minecraftVersion + '\'' +
                 ", accessTransforms='" + accessTransforms + '\'' +
+                ", classMappings='" + classMappings + '\'' +
+                ", memberMappings='" + memberMappings + '\'' +
+                ", packageMappings='" + packageMappings + '\'' +
                 ", minecraftHash='" + minecraftHash + '\'' +
+                ", classMapCommand='" + classMapCommand + '\'' +
+                ", memberMapCommand='" + memberMapCommand + '\'' +
+                ", finalMapCommand='" + finalMapCommand + '\'' +
+                ", decompileCommand='" + decompileCommand + '\'' +
                 ", serverUrl='" + serverUrl + '\'' +
                 ", toolsVersion=" + toolsVersion +
                 '}';
