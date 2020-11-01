@@ -29,7 +29,6 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.security.NoSuchAlgorithmException;
-import java.text.MessageFormat;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -259,12 +258,22 @@ public class Builder {
                                         " map -i {0} -m {1} -o {2}");
                             }
 
-                            String[] args = MessageFormat.format(
-                                    finalVersionInfo.getClassMapCommand(),
-                                    vanillaJar.getPath(),
-                                    new File(buildDataMappings, finalVersionInfo.getClassMappings()).getAbsolutePath(),
-                                    clMappedJar.getPath()
-                            ).split(" ");
+                            String[] args = finalVersionInfo.getClassMapCommand().split(" ");
+
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = vanillaJar.getAbsolutePath();
+                                        break;
+                                    case "{1}":
+                                        args[i] = new File(buildDataMappings, finalVersionInfo.getClassMappings()).getAbsolutePath();
+                                        break;
+                                    case "{2}":
+                                        args[i] = clMappedJar.getAbsolutePath();
+                                        break;
+                                }
+                            }
+
                             String cmd = args[0];
                             args[0] = null;
 
@@ -280,12 +289,22 @@ public class Builder {
                                         " map -i {0} -m {1} -o {2}");
                             }
 
-                            String[] args = MessageFormat.format(
-                                    finalVersionInfo.getMemberMapCommand(),
-                                    clMappedJar.getPath(),
-                                    new File(buildDataMappings, finalVersionInfo.getMemberMappings()).getAbsolutePath(),
-                                    mMappedJar.getPath()
-                            ).split(" ");
+                            String[] args = finalVersionInfo.getMemberMapCommand().split(" ");
+
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = clMappedJar.getAbsolutePath();
+                                        break;
+                                    case "{1}":
+                                        args[i] = new File(buildDataMappings, finalVersionInfo.getMemberMappings()).getAbsolutePath();
+                                        break;
+                                    case "{2}":
+                                        args[i] = mMappedJar.getAbsolutePath();
+                                        break;
+                                }
+                            }
+
                             String cmd = args[0];
                             args[0] = null;
 
@@ -301,13 +320,25 @@ public class Builder {
                                         " --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}");
                             }
 
-                            String[] args = MessageFormat.format(
-                                    finalVersionInfo.getFinalMapCommand(),
-                                    mMappedJar.getPath(),
-                                    new File(buildDataMappings, finalVersionInfo.getAccessTransforms()).getAbsolutePath(),
-                                    new File(buildDataMappings, finalVersionInfo.getPackageMappings()).getAbsolutePath(),
-                                    finalMappedJar.getPath()
-                            ).split(" ");
+                            String[] args = finalVersionInfo.getFinalMapCommand().split(" ");
+
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = mMappedJar.getAbsolutePath();
+                                        break;
+                                    case "{1}":
+                                        args[i] = new File(buildDataMappings, finalVersionInfo.getAccessTransforms()).getAbsolutePath();
+                                        break;
+                                    case "{2}":
+                                        args[i] = new File(buildDataMappings, finalVersionInfo.getPackageMappings()).getAbsolutePath();
+                                        break;
+                                    case "{3}":
+                                        args[i] = finalMappedJar.getAbsolutePath();
+                                        break;
+                                }
+                            }
+
                             String cmd = args[0];
                             args[0] = null;
 
@@ -332,7 +363,19 @@ public class Builder {
                             new File(buildDataBin, "fernflower.jar").getAbsolutePath() + " -dgs=1 -hdc=0 -rbr=0 -asc=1 -udv=0 {0} {1}");
                 }
 
-                String[] args = MessageFormat.format(versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath()).split(" ");
+                String[] args = versionInfo.getDecompileCommand().split(" ");
+
+                for (int i = 0; i < args.length; ++i) {
+                    switch (args[i]) {
+                        case "{0}":
+                            args[i] = clazzDir.getPath();
+                            break;
+                        case "{1}":
+                            args[i] = decompileDir.getPath();
+                            break;
+                    }
+                }
+
                 String cmd = args[0];
                 args[0] = null;
 
@@ -557,7 +600,7 @@ public class Builder {
                 System.out.println("Could not find maven installation, downloading " + mavenVersion + "...");
 
                 String fileName = mavenVersion + "-bin.zip";
-                File mavenZip = new File(CWD, mavenVersion);
+                File mavenZip = new File(CWD, fileName);
                 mavenZip.deleteOnExit();
 
                 if (!mavenZip.exists()) {
