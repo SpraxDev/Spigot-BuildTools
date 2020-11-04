@@ -80,6 +80,7 @@ public class Builder {
 
     private static File msysDir;
 
+    // TODO: Don't use any static methods and enforce Builder to be instantiated instead
     public static void main(String[] args) throws Exception {
         logOutput();
 
@@ -91,30 +92,36 @@ public class Builder {
             if (split.length == 4) {
                 try {
                     buildNumber = Integer.parseInt(split[3]);
-                } catch (NumberFormatException ex) {
+                } catch (NumberFormatException ignore) {
                 }
             }
         }
 
+        // TODO: Change the message to an own version with the suffix "based on ${originalBuildToolsVersion}"
         System.out.println("Loading BuildTools version: " + buildVersion + " (#" + buildNumber + ")");
         System.out.println("Java Version: " + JavaVersion.getCurrentVersion());
         System.out.println("Current Path: " + CWD.getAbsolutePath());
 
+        // TODO: Remove this - commands should be escaped properly instead
         if (CWD.getAbsolutePath().contains("'") ||
                 CWD.getAbsolutePath().contains("#") ||
                 CWD.getAbsolutePath().contains("~") ||
                 CWD.getAbsolutePath().contains("(") ||
                 CWD.getAbsolutePath().contains(")")) {
             System.err.println("Please do not run in a path with special characters!");
+
+            System.exit(1);
             return;
         }
 
+        // TODO: Warn the user but don't enforce it (Give 1.5s time to read the warning)
         if (CWD.getAbsolutePath().contains("Dropbox") ||
                 CWD.getAbsolutePath().contains("OneDrive")) {
             System.err.println("Please do not run BuildTools in a Dropbox, OneDrive, or similar. You can always copy the completed jars there later.");
             return;
         }
 
+        // TODO: Move OptionParser into Bootstrap.java
         OptionParser parser = new OptionParser();
         OptionSpec<Void> help = parser.accepts("help", "Show the help");
         OptionSpec<Void> disableCertFlag = parser.accepts("disable-certificate-check", "Disable HTTPS certificate check");
@@ -140,11 +147,13 @@ public class Builder {
 
         OptionSet options = parser.parse(args);
 
+        // TODO: Check for this in Bootstrap
         if (options.has(help)) {
             parser.printHelpOn(System.out);
             System.exit(0);
         }
 
+        // TODO: Do this in Bootstrap
         if (options.has(disableCertFlag)) {
             disableHttpsCertificateCheck();
         }
@@ -155,6 +164,7 @@ public class Builder {
         dev = options.has(devFlag);
         compile = options.valuesOf(toCompile);
 
+        // TODO: Don't support this arg and mention in README.md
         if (options.has(skipCompileFlag)) {
             compile = Collections.singletonList(Compile.NONE);
             System.err.println("--skip-compile is deprecated, please use --compile NONE");
@@ -162,16 +172,20 @@ public class Builder {
 
         if ((dev || dontUpdate) && options.has(jenkinsVersion)) {
             System.err.println("Using --dev or --dont-update with --rev makes no sense, exiting.");
+
             System.exit(1);
+            return;
         }
 
         try {
-            runProcess(CWD, "sh", "-c", "exit");
+            runProcess(CWD, "sh", "-c", "exit");    // TODO: Support cmd or don't - not even every linux distro uses 'sh' by default
         } catch (Exception ex) {
             if (IS_WINDOWS) {
                 String gitVersion = "PortableGit-2.24.1.2-" + (System.getProperty("os.arch").endsWith("64") ? "64" : "32") + "-bit";
                 // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
-                String gitHash = System.getProperty("os.arch").endsWith("64") ? "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" : "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
+                String gitHash = System.getProperty("os.arch").endsWith("64") ?
+                        "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
+                        "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
                 msysDir = new File(gitVersion, "PortableGit");
 
                 if (!msysDir.isDirectory()) {
@@ -187,7 +201,7 @@ public class Builder {
                     }
 
                     System.out.println("Extracting downloaded git install");
-                    // yes to all, silent, don't run. Only -y seems to work
+                    // yes to all, silent, don't run. Only -y seems to work.
                     runProcess(gitInstall.getParentFile(), gitInstall.getAbsolutePath(), "-y", "-gm2", "-nr");
 
                     gitInstall.delete();
@@ -199,17 +213,21 @@ public class Builder {
                 System.out.println("You must run this jar through bash (msysgit)");
 
                 System.exit(1);
+                return;
             }
         }
 
         try {
+            // TODO: Rewrite method: cross-platform, escaping, ...
             runProcess(CWD, "git", "--version");
         } catch (Exception ex) {
             System.out.println("Could not successfully run git. Please ensure it is installed and functioning. " + ex.getMessage());
 
             System.exit(1);
+            return;
         }
 
+        // TODO: DON'T set these globally!!!!!! Why should this be a good idea? :c
         try {
             runProcess(CWD, "git", "config", "--global", "--includes", "user.name");
         } catch (Exception ex) {
@@ -222,6 +240,8 @@ public class Builder {
             System.out.println("Git email not set, setting it to default value.");
             runProcess(CWD, "git", "config", "--global", "user.email", "unconfigured@null.spigotmc.org");
         }
+
+        // TODO: Make the following lines easier to read by moving it into its own method
 
         File workDir = new File("work");
         workDir.mkdir();
@@ -247,7 +267,7 @@ public class Builder {
         }
 
         File maven;
-        String m2Home = System.getenv("M2_HOME");
+        String m2Home = System.getenv("M2_HOME");   // TODO: Checking M2_ but downloading v3.6.0? Don't check even env, is not set by maven itself
         if (m2Home == null || !(maven = new File(m2Home)).exists()) {
             String mavenVersion = "apache-maven-3.6.0";
             maven = new File(mavenVersion);
@@ -293,14 +313,18 @@ public class Builder {
                 System.out.println("Found version");
                 System.out.println(verInfo);
 
+                // TODO: Abstract json parsing to not use a dummy class
                 buildInfo = new Gson().fromJson(verInfo, BuildInfo.class);
 
+                // TODO: Check if this can be extracted into own method and maybe simplified
                 if (buildNumber != -1 && buildInfo.getToolsVersion() != -1 && buildNumber < buildInfo.getToolsVersion()) {
                     System.err.println("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
 
                     System.exit(1);
+                    return;
                 }
 
+                // TODO: Move to own method
                 if (!options.has(disableJavaCheck)) {
                     if (buildInfo.getJavaVersions() == null) {
                         buildInfo.setJavaVersions(new int[] {JavaVersion.JAVA_7.getVersion(), JavaVersion.JAVA_8.getVersion()});
@@ -324,6 +348,7 @@ public class Builder {
                 }
             }
 
+            // TODO: merge into one variable
             boolean buildDataChanged = pull(buildGit, buildInfo.getRefs().getBuildData());
             boolean bukkitChanged = pull(bukkitGit, buildInfo.getRefs().getBukkit());
             boolean craftBukkitChanged = pull(craftBukkitGit, buildInfo.getRefs().getCraftBukkit());
@@ -338,20 +363,27 @@ public class Builder {
             }
         }
 
+        // TODO: Use '--skip-decompile' to skip decompile etc. but fail compiling spigot/craftbukkit with exit 1 if flag is set
+
+        // TODO: Replace any @Beta annotated method calls
         VersionInfo versionInfo = new Gson().fromJson(
                 Files.asCharSource(new File("BuildData/info.json"), Charsets.UTF_8).read(),
                 VersionInfo.class
         );
         // Default to 1.8 builds.
         if (versionInfo == null) {
-            versionInfo = new VersionInfo("1.8", "bukkit-1.8.at", "bukkit-1.8-cl.csrg", "bukkit-1.8-members.csrg", "package.srg", null);
+            versionInfo = new VersionInfo("1.8", "bukkit-1.8.at",
+                    "bukkit-1.8-cl.csrg", "bukkit-1.8-members.csrg",
+                    "package.srg", null);
         }
         System.out.println("Attempting to build Minecraft with details: " + versionInfo);
 
         if (buildNumber != -1 && versionInfo.getToolsVersion() != -1 && buildNumber < versionInfo.getToolsVersion()) {
-            System.err.println("");
-            System.err.println("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
+            // TODO: Update download link
+            System.err.println("\n**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
+
             System.exit(1);
+            return;
         }
 
         File vanillaJar = new File(workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar");
@@ -359,10 +391,12 @@ public class Builder {
             if (versionInfo.getServerUrl() != null) {
                 download(versionInfo.getServerUrl(), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash());
             } else {
-                download(String.format("https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion()), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash());
+                download(String.format("https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar",
+                        versionInfo.getMinecraftVersion()), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash());
             }
         }
 
+        // TODO: What is this?
         if (versionInfo.getServerUrl() == null) {
             // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
             applyPatchesShell = System.getenv().get("SHELL");
@@ -391,19 +425,20 @@ public class Builder {
             if (versionInfo.getClassMapCommand() == null) {
                 versionInfo.setClassMapCommand("java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}");
             }
-            runProcess(CWD, MessageFormat.format(versionInfo.getClassMapCommand(), vanillaJar.getPath(), "BuildData/mappings/" + versionInfo.getClassMappings(), clMappedJar.getPath()).split(" "));
+            runProcess(CWD, MessageFormat.format(versionInfo.getClassMapCommand(), vanillaJar.getPath(),
+                    "BuildData/mappings/" + versionInfo.getClassMappings() /* TODO: use File-class to construct path */, clMappedJar.getPath()).split(" "));
 
             if (versionInfo.getMemberMapCommand() == null) {
                 versionInfo.setMemberMapCommand("java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}");
             }
             runProcess(CWD, MessageFormat.format(versionInfo.getMemberMapCommand(), clMappedJar.getPath(),
-                    "BuildData/mappings/" + versionInfo.getMemberMappings(), mMappedJar.getPath()).split(" "));
+                    "BuildData/mappings/" + versionInfo.getMemberMappings() /* TODO: use File-class to construct path */, mMappedJar.getPath()).split(" "));
 
             if (versionInfo.getFinalMapCommand() == null) {
                 versionInfo.setFinalMapCommand("java -jar BuildData/bin/SpecialSource.jar --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}");
             }
             runProcess(CWD, MessageFormat.format(versionInfo.getFinalMapCommand(), mMappedJar.getPath(), "BuildData/mappings/" + versionInfo.getAccessTransforms(),
-                    "BuildData/mappings/" + versionInfo.getPackageMappings(), finalMappedJar.getPath()).split(" "));
+                    "BuildData/mappings/" + versionInfo.getPackageMappings() /* TODO: use File-class to construct path */, finalMappedJar.getPath()).split(" "));
         }
 
         runProcess(CWD, "sh", mvn, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
@@ -417,9 +452,11 @@ public class Builder {
             unzip(finalMappedJar, clazzDir, input -> input.startsWith("net/minecraft/server"));
 
             if (versionInfo.getDecompileCommand() == null) {
+                // TODO: Use File-class for path to fernflower.jar
                 versionInfo.setDecompileCommand("java -jar BuildData/bin/fernflower.jar -dgs=1 -hdc=0 -rbr=0 -asc=1 -udv=0 {0} {1}");
             }
 
+            // TODO: Don't use #format because it could destroy paths when executed
             runProcess(CWD, MessageFormat.format(versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath()).split(" "));
         }
 
@@ -502,8 +539,6 @@ public class Builder {
             }
         }
 
-        // Git spigotApiGit = Git.open( spigotApi );
-        // Git spigotServerGit = Git.open( spigotServer );
         if (compile == null || compile.isEmpty()) {
             if (versionInfo.getToolsVersion() <= 104 || dev) {
                 compile = Arrays.asList(Compile.CRAFTBUKKIT, Compile.SPIGOT);
@@ -550,13 +585,16 @@ public class Builder {
             System.err.println("Error compiling Spigot. Please check the wiki for FAQs.");
             System.err.println("If this does not resolve your issue then please pastebin the entire BuildTools.log.txt file when seeking support.");
             ex.printStackTrace();
+
             System.exit(1);
+            return;
         }
 
-        for (int i = 0; i < 35; i++) {
-            System.out.println(" ");
+        for (int i = 0; i < 36; ++i) {
+            System.out.println();
         }
 
+        // TODO: Don't print this message if nothing compiled!
         System.out.println("Success! Everything completed successfully. Copying final .jar files now.");
         if (compile.contains(Compile.CRAFTBUKKIT) && (versionInfo.getToolsVersion() < 101 || versionInfo.getToolsVersion() > 104)) {
             copyJar("CraftBukkit/target", "craftbukkit", new File(outputDir.value(options), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar"));
@@ -590,7 +628,7 @@ public class Builder {
         }
     }
 
-    public static void copyJar(String path, final String jarPrefix, File outJar) throws Exception {
+    public static void copyJar(String path, final String jarPrefix, File outJar) throws IOException {
         File[] files = new File(path).listFiles((dir, name) -> name.startsWith(jarPrefix) && name.endsWith(".jar"));
 
         if (!outJar.getParentFile().isDirectory()) {
@@ -605,7 +643,7 @@ public class Builder {
         }
     }
 
-    public static boolean pull(Git repo, String ref) throws Exception {
+    public static boolean pull(Git repo, String ref) throws GitAPIException {
         System.out.println("Pulling updates for " + repo.getRepository().getDirectory());
 
         try {
@@ -628,7 +666,7 @@ public class Builder {
         return !result.getTrackingRefUpdates().isEmpty();
     }
 
-    public static int runProcess(File workDir, String... command) throws Exception {
+    public static int runProcess(File workDir, String... command) throws IOException, InterruptedException {
         if (msysDir != null) {
             if ("bash".equals(command[0])) {
                 command[0] = "git-bash";
@@ -641,7 +679,7 @@ public class Builder {
         return runProcess0(workDir, command);
     }
 
-    private static int runProcess0(File workDir, String... command) throws Exception {
+    private static int runProcess0(File workDir, String... command) throws IOException, InterruptedException {
         Preconditions.checkArgument(workDir != null, "workDir");
         Preconditions.checkArgument(command != null && command.length > 0, "Invalid command");
 
