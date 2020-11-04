@@ -2,6 +2,11 @@ package org.spigotmc.builder;
 
 import com.google.common.base.Joiner;
 
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+
 public class Bootstrap {
     public static void main(String[] args) throws Exception {
         JavaVersion javaVersion = JavaVersion.getCurrentVersion();
@@ -27,6 +32,14 @@ public class Bootstrap {
             System.exit(1);
         }
 
+        /* Start Builder */
+
+        final long buildStart = System.nanoTime();  // Using nanos to be independent from system clock
+
         Builder.main(args);
+
+        final long buildEnd = System.nanoTime();
+        System.out.println("Finished in " + new DecimalFormat("#0.00", DecimalFormatSymbols.getInstance(Locale.ENGLISH))
+                .format(TimeUnit.NANOSECONDS.toMillis(buildEnd - buildStart) / 1000.0) + " seconds");
     }
 }
