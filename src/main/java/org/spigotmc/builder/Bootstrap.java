@@ -24,6 +24,12 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 public class Bootstrap {
+    /**
+     * This field holds the compatibility information
+     * When the original project updates, this field has to be updated too!
+     */
+    public static final int ORIGINAL_BUILD_NUMBER = getBuildNumber("git-BuildTools-7fe9375-122");
+
     public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
     public static final boolean AUTO_CRLF = !"\n".equals(System.getProperty("line.separator"));
 
@@ -101,8 +107,8 @@ public class Bootstrap {
             }
         }
 
-        // TODO: Change the message to an own version with the suffix "based on ${originalBuildToolsVersion}"
-        System.out.println("Running BuildTools version '" + Bootstrap.getBuildVersion() + "' (#" + Bootstrap.getBuildNumber() + ")");
+        System.out.println("Running BuildTools '" + getBuildVersion() + "' (#" + getBuildNumber(getBuildVersion()) +
+                " - Based on #" + ORIGINAL_BUILD_NUMBER + ")");
         System.out.println("Java Version: " + JavaVersion.getCurrentVersion() + " (" +
                 System.getProperty("java.version", "Unknown Version") + ", " +
                 System.getProperty("java.vendor", "Unknown Vendor") + ", " +
@@ -141,13 +147,11 @@ public class Bootstrap {
     }
 
     @Nullable
-    public static String getBuildVersion() {
+    private static String getBuildVersion() {
         return Builder.class.getPackage().getImplementationVersion();
     }
 
-    public static int getBuildNumber() {
-        String buildVersion = getBuildVersion();
-
+    public static int getBuildNumber(@Nullable String buildVersion) {
         if (buildVersion != null) {
             String[] split = buildVersion.split("-");
 

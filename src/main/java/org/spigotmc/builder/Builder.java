@@ -106,9 +106,9 @@ public class Builder {
                     // TODO: Abstract json parsing to not use a dummy class
                     buildInfo = new Gson().fromJson(verInfo, BuildInfo.class);
 
-                    if (Bootstrap.getBuildNumber() != -1 &&
+                    if (Bootstrap.ORIGINAL_BUILD_NUMBER != -1 &&
                             buildInfo.getToolsVersion() != -1 &&
-                            Bootstrap.getBuildNumber() < buildInfo.getToolsVersion()) {
+                            Bootstrap.ORIGINAL_BUILD_NUMBER < buildInfo.getToolsVersion()) {
                         throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. " +
                                 "Please grab a new copy from https://github.com/SpraxDev/Spigot-BuildTools/releases/latest");
                     }
@@ -170,9 +170,9 @@ public class Builder {
             }
             System.out.println("Attempting to build Minecraft with details: " + versionInfo);
 
-            if (Bootstrap.getBuildNumber() != -1 &&
+            if (Bootstrap.ORIGINAL_BUILD_NUMBER != -1 &&
                     versionInfo.getToolsVersion() != -1 &&
-                    Bootstrap.getBuildNumber() < versionInfo.getToolsVersion()) {
+                    Bootstrap.ORIGINAL_BUILD_NUMBER < versionInfo.getToolsVersion()) {
                 throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://github.com/SpraxDev/Spigot-BuildTools/releases/latest");
             }
 
