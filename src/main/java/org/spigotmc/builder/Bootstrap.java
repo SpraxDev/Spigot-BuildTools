@@ -39,6 +39,7 @@ public class Bootstrap {
         OptionSpec<Void> disableCertFlag = optionParser.accepts("disable-certificate-check", "Disable HTTPS certificate check");
         OptionSpec<Void> disableJavaCheckFlag = optionParser.accepts("disable-java-check", "Disable Java version check");
         OptionSpec<Void> skipUpdateFlag = optionParser.accepts("dont-update", "Don't pull updates from Git");
+        OptionSpec<Void> exitAfterFetchFlag = optionParser.accepts("exit-after-fetch", "Everything --rev unrelated is downloaded. No (de-)compiling");
         OptionSpec<Void> generateSrcFlag = optionParser.accepts("generate-source", "Generate source jar");
         OptionSpec<Void> generateDocFlag = optionParser.accepts("generate-docs", "Generate Javadoc jar");
         OptionSpec<Void> devModeFlag = optionParser.accepts("dev", "Development mode");
@@ -68,6 +69,7 @@ public class Bootstrap {
         }
 
         final boolean skipUpdate = options.has(skipUpdateFlag);
+        final boolean exitAfterFetch = options.has(exitAfterFetchFlag);
         final boolean generateSrc = options.has(generateSrcFlag);
         final boolean generateDoc = options.has(generateDocFlag);
         final boolean isDevMode = options.has(devModeFlag);
@@ -113,7 +115,7 @@ public class Bootstrap {
         final long buildStart = System.nanoTime();  // Using nanos to be independent of the system clock
 
         try {
-            new Builder(CWD, new Builder.BuilderConfiguration(skipUpdate, generateSrc, generateDoc,
+            new Builder(CWD, new Builder.BuilderConfiguration(skipUpdate,exitAfterFetch, generateSrc, generateDoc,
                     isDevMode, disableJavaCheck, onlyCompileOnChange, hasJenkinsVersion, jenkinsVersion, toCompile, outputDir))
                     .runBuild();
         } catch (Exception ex) {

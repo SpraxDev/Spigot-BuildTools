@@ -154,7 +154,10 @@ public class Builder {
                 }
             }
 
-            // TODO: Use '--exit-after-fetch' to skip decompile etc. but fail compiling with exit 1 when 'toCompile' is not NONE
+            if (cfg.exitAfterFetch) {
+                System.out.println("Finished fetching all version unrelated data. Exiting because of '--exit-after-fetch'");
+                return;
+            }
 
             VersionInfo versionInfo = new Gson().fromJson(
                     FileUtils.readFileToString(new File("BuildData/info.json"), StandardCharsets.UTF_8),
@@ -508,7 +511,6 @@ public class Builder {
             }
         }
 
-        // TODO: DON'T set these globally!!!!!! Why should this be a good idea? :c
         try {
             Utils.runCommand(cwd, gitCmd, "config", "--global", "--includes", "user.name");
         } catch (Exception ex) {
@@ -583,6 +585,7 @@ public class Builder {
 
     public static class BuilderConfiguration {
         public final boolean skipUpdate;
+        public final boolean exitAfterFetch;
         public final boolean generateSrc;
         public final boolean generateDoc;
         public final boolean isDevMode;
@@ -594,10 +597,11 @@ public class Builder {
         public final @NotNull List<Compile> toCompile;
         public final @NotNull File outputDir;
 
-        public BuilderConfiguration(boolean skipUpdate, boolean generateSrc, boolean generateDoc, boolean isDevMode,
+        public BuilderConfiguration(boolean skipUpdate, boolean exitAfterFetch, boolean generateSrc, boolean generateDoc, boolean isDevMode,
                                     boolean disableJavaCheck, boolean onlyCompileOnChange, boolean hasJenkinsVersion,
                                     @NotNull String jenkinsVersion, @NotNull List<Compile> toCompile, @NotNull File outputDir) {
             this.skipUpdate = skipUpdate;
+            this.exitAfterFetch = exitAfterFetch;
             this.generateSrc = generateSrc;
             this.generateDoc = generateDoc;
             this.isDevMode = isDevMode;
