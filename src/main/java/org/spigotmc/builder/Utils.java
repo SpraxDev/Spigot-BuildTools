@@ -222,7 +222,7 @@ public class Utils {
         pool.awaitTermination(60, TimeUnit.MINUTES);   // This *should* not be exceeded and Long.MAX_VALUE seems overkill
 
         // Making sure there won't be any buggy/unwanted threads left
-        if (pool.shutdownNow().size() > 0) {
+        if (!pool.shutdownNow().isEmpty()) {
             throw new IllegalStateException("There are still tasks in the queue after 1 hour of execution... This doesn't look right");
         }
 
@@ -297,7 +297,7 @@ public class Utils {
                 new X509TrustManager() {
                     @Override
                     public X509Certificate[] getAcceptedIssuers() {
-                        return null;
+                        return new X509Certificate[0];
                     }
 
                     @Override

@@ -109,9 +109,8 @@ public class Builder {
                     if (Bootstrap.getBuildNumber() != -1 &&
                             buildInfo.getToolsVersion() != -1 &&
                             Bootstrap.getBuildNumber() < buildInfo.getToolsVersion()) {
-                        // TODO: Update download link
                         throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. " +
-                                "Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
+                                "Please grab a new copy from https://github.com/SpraxDev/Spigot-BuildTools/releases/latest");
                     }
 
                     if (!cfg.disableJavaCheck) {
@@ -174,8 +173,7 @@ public class Builder {
             if (Bootstrap.getBuildNumber() != -1 &&
                     versionInfo.getToolsVersion() != -1 &&
                     Bootstrap.getBuildNumber() < versionInfo.getToolsVersion()) {
-                // TODO: Update download link
-                throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
+                throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://github.com/SpraxDev/Spigot-BuildTools/releases/latest");
             }
 
             File vanillaJar = new File(workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar");
@@ -326,10 +324,9 @@ public class Builder {
                 Files.deleteIfExists(latestLink.toPath());
 
                 Files.createSymbolicLink(latestLink.toPath(), decompileDir.getParentFile().toPath().relativize(decompileDir.toPath()));
-            } catch (UnsupportedOperationException ex) {
-                // Ignore if not possible
-            } catch (FileSystemException ex) {
-                // Not running as admin on Windows
+            } catch (UnsupportedOperationException | FileSystemException ex) {
+                // UnsupportedOperationException: Ignore if not possible
+                // FileSystemException: Not running as admin on Windows
             } catch (IOException ex) {
                 System.out.println("Did not create decompile-latest link " + ex.getMessage());
             }
@@ -515,7 +512,7 @@ public class Builder {
             Utils.runCommand(cwd, gitCmd, "config", "--global", "--includes", "user.name");
         } catch (Exception ex) {
             System.out.println("Git name not set, setting it to default value.");
-            Utils.runCommand(cwd, gitCmd, "config", "--global", "user.name", "BuildTools");
+            Utils.runCommand(cwd, gitCmd, "config", "--global", "user.name", "SpraxDev/BuildTools");
         }
 
         try {

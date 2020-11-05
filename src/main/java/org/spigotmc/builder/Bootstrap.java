@@ -115,7 +115,7 @@ public class Bootstrap {
         final long buildStart = System.nanoTime();  // Using nanos to be independent of the system clock
 
         try {
-            new Builder(CWD, new Builder.BuilderConfiguration(skipUpdate,exitAfterFetch, generateSrc, generateDoc,
+            new Builder(CWD, new Builder.BuilderConfiguration(skipUpdate, exitAfterFetch, generateSrc, generateDoc,
                     isDevMode, disableJavaCheck, onlyCompileOnChange, hasJenkinsVersion, jenkinsVersion, toCompile, outputDir))
                     .runBuild();
         } catch (Exception ex) {
