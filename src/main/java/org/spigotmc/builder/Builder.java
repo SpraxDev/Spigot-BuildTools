@@ -10,16 +10,12 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.CharStreams;
 import com.google.common.io.Files;
-import com.google.common.io.Resources;
 import com.google.gson.Gson;
 import difflib.DiffUtils;
 import difflib.Patch;
-import joptsimple.OptionParser;
-import joptsimple.OptionSet;
-import joptsimple.OptionSpec;
-import joptsimple.util.EnumConverter;
+import difflib.PatchFailedException;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.output.TeeOutputStream;
+import org.apache.commons.io.IOUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -28,17 +24,9 @@ import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.FetchResult;
 
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -50,10 +38,6 @@ import java.lang.management.ManagementFactory;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.file.FileSystemException;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Collections;
@@ -65,43 +49,21 @@ import java.util.function.Predicate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import static org.spigotmc.builder.Bootstrap.CWD;
+
 public class Builder {
-    public static final String LOG_FILE = "BuildTools.log.txt";
-    public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
-    public static final File CWD = new File(".");
-    private static final boolean autocrlf = !"\n".equals(System.getProperty("line.separator"));
-    private static boolean dontUpdate;
-    private static List<Compile> compile;
-    private static boolean generateSource;
-    private static boolean generateDocs;
-    private static boolean dev;
+    private static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
+    private static final boolean AUTO_CRLF = !"\n".equals(System.getProperty("line.separator"));
+
     private static String applyPatchesShell = "sh";
     private static boolean didClone = false;
 
     private static File msysDir;
 
     // TODO: Don't use any static methods and enforce Builder to be instantiated instead
-    public static void main(String[] args) throws Exception {
-        logOutput();
-
-        // May be null
-        String buildVersion = Builder.class.getPackage().getImplementationVersion();
-        int buildNumber = -1;
-        if (buildVersion != null) {
-            String[] split = buildVersion.split("-");
-            if (split.length == 4) {
-                try {
-                    buildNumber = Integer.parseInt(split[3]);
-                } catch (NumberFormatException ignore) {
-                }
-            }
-        }
-
-        // TODO: Change the message to an own version with the suffix "based on ${originalBuildToolsVersion}"
-        System.out.println("Loading BuildTools version: " + buildVersion + " (#" + buildNumber + ")");
-        System.out.println("Java Version: " + JavaVersion.getCurrentVersion());
-        System.out.println("Current Path: " + CWD.getAbsolutePath());
-
+    public static void main(boolean dontUpdate, boolean generateSource, boolean generateDocs, boolean dev,
+                            List<Compile> compile, boolean hasJenkinsVersion, String jenkinsVersion, boolean disableJavaCheck,
+                            boolean compileIfChanged, File outputDir) throws IOException, InterruptedException, GitAPIException, PatchFailedException {
         // TODO: Remove this - commands should be escaped properly instead
         if (CWD.getAbsolutePath().contains("'") ||
                 CWD.getAbsolutePath().contains("#") ||
@@ -121,56 +83,7 @@ public class Builder {
             return;
         }
 
-        // TODO: Move OptionParser into Bootstrap.java
-        OptionParser parser = new OptionParser();
-        OptionSpec<Void> help = parser.accepts("help", "Show the help");
-        OptionSpec<Void> disableCertFlag = parser.accepts("disable-certificate-check", "Disable HTTPS certificate check");
-        OptionSpec<Void> disableJavaCheck = parser.accepts("disable-java-check", "Disable Java version check");
-        OptionSpec<Void> dontUpdateFlag = parser.accepts("dont-update", "Don't pull updates from Git");
-        OptionSpec<Void> skipCompileFlag = parser.accepts("skip-compile", "Skip compilation");
-        OptionSpec<Void> generateSourceFlag = parser.accepts("generate-source", "Generate source jar");
-        OptionSpec<Void> generateDocsFlag = parser.accepts("generate-docs", "Generate Javadoc jar");
-        OptionSpec<Void> devFlag = parser.accepts("dev", "Development mode");
-        OptionSpec<File> outputDir = parser.acceptsAll(Arrays.asList("o", "output-dir"), "Final jar output directory")
-                .withRequiredArg()
-                .ofType(File.class)
-                .defaultsTo(CWD);
-        OptionSpec<String> jenkinsVersion = parser.accepts("rev", "Version to build")
-                .withRequiredArg()
-                .defaultsTo("latest");
-        OptionSpec<Compile> toCompile = parser.accepts("compile", "Software to compile")
-                .withRequiredArg()
-                .ofType(Compile.class)
-                .withValuesConvertedBy(new EnumConverter<Compile>(Compile.class) { })
-                .withValuesSeparatedBy(',');
-        OptionSpec<Void> compileIfChanged = parser.accepts("compile-if-changed", "Run BuildTools only when changes are detected in the repository");
-
-        OptionSet options = parser.parse(args);
-
-        // TODO: Check for this in Bootstrap
-        if (options.has(help)) {
-            parser.printHelpOn(System.out);
-            System.exit(0);
-        }
-
-        // TODO: Do this in Bootstrap
-        if (options.has(disableCertFlag)) {
-            disableHttpsCertificateCheck();
-        }
-
-        dontUpdate = options.has(dontUpdateFlag);
-        generateSource = options.has(generateSourceFlag);
-        generateDocs = options.has(generateDocsFlag);
-        dev = options.has(devFlag);
-        compile = options.valuesOf(toCompile);
-
-        // TODO: Don't support this arg and mention in README.md
-        if (options.has(skipCompileFlag)) {
-            compile = Collections.singletonList(Compile.NONE);
-            System.err.println("--skip-compile is deprecated, please use --compile NONE");
-        }
-
-        if ((dev || dontUpdate) && options.has(jenkinsVersion)) {
+        if ((dev || dontUpdate) && hasJenkinsVersion) {
             System.err.println("Using --dev or --dont-update with --rev makes no sense, exiting.");
 
             System.exit(1);
@@ -197,7 +110,7 @@ public class Builder {
                     gitInstall.getParentFile().mkdirs();
 
                     if (!gitInstall.exists()) {
-                        download("https://static.spigotmc.org/git/" + gitName, gitInstall, HashFormat.SHA256, gitHash);
+                        downloadFile("https://static.spigotmc.org/git/" + gitName, gitInstall, HashFormat.SHA256, gitHash);
                     }
 
                     System.out.println("Extracting downloaded git install");
@@ -279,7 +192,7 @@ public class Builder {
                 mvnTemp.deleteOnExit();
 
                 // https://www.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip.sha512
-                download("https://static.spigotmc.org/maven/" + mvnTemp.getName(), mvnTemp, HashFormat.SHA512, "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9");
+                downloadFile("https://static.spigotmc.org/maven/" + mvnTemp.getName(), mvnTemp, HashFormat.SHA512, "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9");
                 unzip(mvnTemp, new File("."));
                 mvnTemp.delete();
             }
@@ -297,14 +210,13 @@ public class Builder {
 
         if (!dontUpdate) {
             if (!dev) {
-                String askedVersion = options.valueOf(jenkinsVersion);
-                System.out.println("Attempting to build version: '" + askedVersion + "' use --rev <version> to override");
+                System.out.println("Attempting to build version: '" + jenkinsVersion + "' use --rev <version> to override");
 
                 String verInfo;
                 try {
-                    verInfo = get("https://hub.spigotmc.org/versions/" + askedVersion + ".json");
+                    verInfo = get("https://hub.spigotmc.org/versions/" + jenkinsVersion + ".json");
                 } catch (IOException ex) {
-                    System.err.println("Could not get version " + askedVersion + " does it exist? Try another version or use 'latest'");
+                    System.err.println("Could not get version " + jenkinsVersion + " does it exist? Try another version or use 'latest'");
                     ex.printStackTrace();
 
                     System.exit(1);
@@ -317,15 +229,18 @@ public class Builder {
                 buildInfo = new Gson().fromJson(verInfo, BuildInfo.class);
 
                 // TODO: Check if this can be extracted into own method and maybe simplified
-                if (buildNumber != -1 && buildInfo.getToolsVersion() != -1 && buildNumber < buildInfo.getToolsVersion()) {
-                    System.err.println("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
+                if (Bootstrap.getBuildNumber() != -1 &&
+                        buildInfo.getToolsVersion() != -1 &&
+                        Bootstrap.getBuildNumber() < buildInfo.getToolsVersion()) {
+                    System.err.println("**** Your BuildTools is out of date and will not build the requested version. " +
+                            "Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
 
                     System.exit(1);
                     return;
                 }
 
                 // TODO: Move to own method
-                if (!options.has(disableJavaCheck)) {
+                if (!disableJavaCheck) {
                     if (buildInfo.getJavaVersions() == null) {
                         buildInfo.setJavaVersions(new int[] {JavaVersion.JAVA_7.getVersion(), JavaVersion.JAVA_8.getVersion()});
                     }
@@ -355,7 +270,7 @@ public class Builder {
             boolean spigotChanged = pull(spigotGit, buildInfo.getRefs().getSpigot());
 
             // Checks if any of the 4 repositories have been updated via a fetch, the --compile-if-changed flag is set and none of the repositories were cloned in this run.
-            if (!buildDataChanged && !bukkitChanged && !craftBukkitChanged && !spigotChanged && options.has(compileIfChanged) && !didClone) {
+            if (!buildDataChanged && !bukkitChanged && !craftBukkitChanged && !spigotChanged && compileIfChanged && !didClone) {
                 System.out.println("*** No changes detected in any of the repositories!");
                 System.out.println("*** Exiting due to the --compile-if-changes");
 
@@ -378,7 +293,9 @@ public class Builder {
         }
         System.out.println("Attempting to build Minecraft with details: " + versionInfo);
 
-        if (buildNumber != -1 && versionInfo.getToolsVersion() != -1 && buildNumber < versionInfo.getToolsVersion()) {
+        if (Bootstrap.getBuildNumber() != -1 &&
+                versionInfo.getToolsVersion() != -1 &&
+                Bootstrap.getBuildNumber() < versionInfo.getToolsVersion()) {
             // TODO: Update download link
             System.err.println("\n**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl");
 
@@ -387,12 +304,12 @@ public class Builder {
         }
 
         File vanillaJar = new File(workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar");
-        if (!vanillaJar.exists() || !checkHash(vanillaJar, versionInfo)) {
+        if (!vanillaJar.exists() || !checkHash(vanillaJar, versionInfo, dev)) {
             if (versionInfo.getServerUrl() != null) {
-                download(versionInfo.getServerUrl(), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash());
+                downloadFile(versionInfo.getServerUrl(), vanillaJar, HashFormat.MD5, dev ? null : versionInfo.getMinecraftHash());
             } else {
-                download(String.format("https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar",
-                        versionInfo.getMinecraftVersion()), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash());
+                downloadFile(String.format("https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar",
+                        versionInfo.getMinecraftVersion()), vanillaJar, HashFormat.MD5, dev ? null : versionInfo.getMinecraftHash());
             }
         }
 
@@ -597,18 +514,18 @@ public class Builder {
         // TODO: Don't print this message if nothing compiled!
         System.out.println("Success! Everything completed successfully. Copying final .jar files now.");
         if (compile.contains(Compile.CRAFTBUKKIT) && (versionInfo.getToolsVersion() < 101 || versionInfo.getToolsVersion() > 104)) {
-            copyJar("CraftBukkit/target", "craftbukkit", new File(outputDir.value(options), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar"));
+            copyJar("CraftBukkit/target", "craftbukkit", new File(outputDir, "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar"));
         }
 
         if (compile.contains(Compile.SPIGOT)) {
-            copyJar("Spigot/Spigot-Server/target", "spigot", new File(outputDir.value(options), "spigot-" + versionInfo.getMinecraftVersion() + ".jar"));
+            copyJar("Spigot/Spigot-Server/target", "spigot", new File(outputDir, "spigot-" + versionInfo.getMinecraftVersion() + ".jar"));
         }
     }
 
-    private static boolean checkHash(File vanillaJar, VersionInfo versionInfo) throws IOException {
+    private static boolean checkHash(File vanillaJar, VersionInfo versionInfo, boolean dev) throws IOException {
         String hash = Files.asByteSource(vanillaJar).hash(HashFormat.MD5.getHash()).toString();
 
-        if (dev || versionInfo.getMinecraftHash() == null || hash.equals(versionInfo.getMinecraftHash())) {
+        if (dev || versionInfo.getMinecraftHash() == null || hash.equalsIgnoreCase(versionInfo.getMinecraftHash())) {
             System.out.println("Found good Minecraft hash (" + hash + ")");
             return true;
         } else {
@@ -807,7 +724,7 @@ public class Builder {
 
         try (Git result = Git.cloneRepository().setURI(url).setDirectory(target).call()) {
             StoredConfig config = result.getRepository().getConfig();
-            config.setBoolean("core", null, "autocrlf", autocrlf);
+            config.setBoolean("core", null, "autocrlf", AUTO_CRLF);
             config.save();
 
             didClone = true;
@@ -819,75 +736,22 @@ public class Builder {
         return Iterables.getOnlyElement(repo.log().setMaxCount(1).call()).getName();
     }
 
-    public static void download(String url, File target, HashFormat hashFormat, String goodHash) throws IOException {
+    public static void downloadFile(String url, File dest, HashFormat hashFormat, String goodHash) throws IOException {
         System.out.println("Starting download of " + url);
 
-        byte[] bytes = Resources.toByteArray(new URL(url));
-        String hash = hashFormat.getHash().hashBytes(bytes).toString();
+        FileUtils.copyURLToFile(new URL(url), dest);
+        byte[] bytes = IOUtils.toByteArray(new URL(url));
+        String hash = hashFormat.getHash().hashBytes(bytes).toString(); // TODO: Rewrite hashing methods
 
-        System.out.println("Downloaded file: " + target + " with hash: " + hash);
+        System.out.println("Downloaded file: " + dest + " with hash: " + hash);
 
-        if (!dev && goodHash != null && !goodHash.equals(hash)) {
-            throw new IllegalStateException("Downloaded file: " + target + " did not match expected hash: " + goodHash);
+        if (goodHash != null && !goodHash.equals(hash)) {
+            throw new IllegalStateException("Downloaded file: " + dest + " did not match expected hash: " + goodHash);
         }
 
-        Files.write(bytes, target);
-    }
-
-    public static void disableHttpsCertificateCheck() {
-        // This globally disables certificate checking
-        // http://stackoverflow.com/questions/19723415/java-overriding-function-to-disable-ssl-certificate-check
-        try {
-            TrustManager[] trustAllCerts = new TrustManager[] {
-                    new X509TrustManager() {
-                        @Override
-                        public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-
-                        @Override
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                        }
-
-                        @Override
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                        }
-                    }
-            };
-
-            // Trust SSL certs
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-
-            // Trust host names
-            HostnameVerifier allHostsValid = (hostname, session) -> true;
-            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
-        } catch (NoSuchAlgorithmException | KeyManagementException ex) {
-            System.out.println("Failed to disable https certificate check");
-            ex.printStackTrace();
-        }
-    }
-
-    public static void logOutput() {
-        try {
-            final OutputStream logOut = new BufferedOutputStream(new FileOutputStream(LOG_FILE));
-
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));
-                System.setErr(new PrintStream(new FileOutputStream(FileDescriptor.err)));
-
-                try {
-                    logOut.close();
-                } catch (IOException ignore) {
-                    // We're shutting the jvm down anyway.
-                }
-            }));
-
-            System.setOut(new PrintStream(new TeeOutputStream(System.out, logOut)));
-            System.setErr(new PrintStream(new TeeOutputStream(System.err, logOut)));
-        } catch (FileNotFoundException ex) {
-            System.err.println("Failed to create log file: " + LOG_FILE);
+        java.nio.file.Files.createDirectories(dest.getParentFile().toPath());
+        try (FileOutputStream out = new FileOutputStream(dest)) {
+            IOUtils.write(bytes, out);
         }
     }
 
