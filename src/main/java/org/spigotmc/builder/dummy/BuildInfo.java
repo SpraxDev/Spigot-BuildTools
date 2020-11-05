@@ -1,8 +1,11 @@
-package org.spigotmc.builder;
+package org.spigotmc.builder.dummy;
 
 import java.util.Arrays;
 import java.util.Objects;
 
+/**
+ * This is a dummy class used when parsing JSON
+ */
 @SuppressWarnings("UnusedAssignment")
 public class BuildInfo {
     private final String name;

@@ -1,7 +1,10 @@
-package org.spigotmc.builder;
+package org.spigotmc.builder.dummy;
 
 import java.util.Objects;
 
+/**
+ * This is a dummy class used when parsing JSON
+ */
 @SuppressWarnings({"FieldCanBeLocal"})
 public class VersionInfo {
     private final String minecraftVersion;

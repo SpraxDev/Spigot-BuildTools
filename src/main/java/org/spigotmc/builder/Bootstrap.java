@@ -21,10 +21,14 @@ import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 public class Bootstrap {
+    public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
+    public static final boolean AUTO_CRLF = !"\n".equals(System.getProperty("line.separator"));
+
     public static final File CWD = new File(".").toPath().toAbsolutePath().normalize().toFile();
     private static final File LOG_FILE = new File(CWD, "BuildTools.log.txt");
 
@@ -33,35 +37,54 @@ public class Bootstrap {
 
         /* parse args */
         OptionParser optionParser = new OptionParser();
-        OptionSpec<Void> help = optionParser.accepts("help", "Show the help");
+        OptionSpec<Void> helpFlag = optionParser.accepts("help", "Show the help");
         OptionSpec<Void> disableCertFlag = optionParser.accepts("disable-certificate-check", "Disable HTTPS certificate check");
-        OptionSpec<Void> disableJavaCheck = optionParser.accepts("disable-java-check", "Disable Java version check");
-        OptionSpec<Void> dontUpdateFlag = optionParser.accepts("dont-update", "Don't pull updates from Git");
-        OptionSpec<Void> generateSourceFlag = optionParser.accepts("generate-source", "Generate source jar");
-        OptionSpec<Void> generateDocsFlag = optionParser.accepts("generate-docs", "Generate Javadoc jar");
-        OptionSpec<Void> devFlag = optionParser.accepts("dev", "Development mode");
-        OptionSpec<File> outputDir = optionParser.acceptsAll(Arrays.asList("o", "output-dir"), "Final jar output directory")
+        OptionSpec<Void> disableJavaCheckFlag = optionParser.accepts("disable-java-check", "Disable Java version check");
+        OptionSpec<Void> skipUpdateFlag = optionParser.accepts("dont-update", "Don't pull updates from Git");
+        OptionSpec<Void> generateSrcFlag = optionParser.accepts("generate-source", "Generate source jar");
+        OptionSpec<Void> generateDocFlag = optionParser.accepts("generate-docs", "Generate Javadoc jar");
+        OptionSpec<Void> devModeFlag = optionParser.accepts("dev", "Development mode");
+        OptionSpec<File> outputDirFlag = optionParser.acceptsAll(Arrays.asList("o", "output-dir"), "Final jar output directory")
                 .withRequiredArg()
                 .ofType(File.class)
                 .defaultsTo(CWD);
-        OptionSpec<String> jenkinsVersion = optionParser.accepts("rev", "Version to build")
+        OptionSpec<String> jenkinsVersionFlag = optionParser.accepts("rev", "Version to build")
                 .withRequiredArg()
                 .defaultsTo("latest");
-        OptionSpec<Compile> toCompile = optionParser.accepts("compile", "Software to compile")
+        OptionSpec<Compile> toCompileFlag = optionParser.accepts("compile", "Software to compile")
                 .withRequiredArg()
                 .ofType(Compile.class)
                 .withValuesConvertedBy(new EnumConverter<Compile>(Compile.class) { })
-                .withValuesSeparatedBy(',');
-        OptionSpec<Void> compileIfChanged = optionParser.accepts("compile-if-changed", "Run BuildTools only when changes are detected in the repository");
+                .withValuesSeparatedBy(',')
+                .defaultsTo(Compile.SPIGOT);
+        OptionSpec<Void> onlyCompileOnChangeFlag = optionParser.accepts("compile-if-changed", "Run BuildTools only when changes are detected in the repository");
 
         OptionSet options = optionParser.parse(args);
 
         // Print help and exit
-        if (options.has(help)) {
+        if (options.has(helpFlag)) {
             optionParser.printHelpOn(System.out);
 
             System.exit(0);
             return;
+        }
+
+        final boolean skipUpdate = options.has(skipUpdateFlag);
+        final boolean generateSrc = options.has(generateSrcFlag);
+        final boolean generateDoc = options.has(generateDocFlag);
+        final boolean isDevMode = options.has(devModeFlag);
+        final boolean disableJavaCheck = options.has(disableJavaCheckFlag);
+        final boolean onlyCompileOnChange = options.has(onlyCompileOnChangeFlag);
+        final boolean hasJenkinsVersion = options.has(jenkinsVersionFlag);
+
+        final String jenkinsVersion = options.valueOf(jenkinsVersionFlag);
+        final List<Compile> toCompile = options.valuesOf(toCompileFlag);
+        final File outputDir = outputDirFlag.value(options);
+
+        if (toCompile.isEmpty()) {
+            toCompile.add(Compile.NONE);
+        } else if (toCompile.size() > 1 && toCompile.contains(Compile.NONE)) {
+            toCompile.removeIf(compile -> compile != Compile.NONE);
         }
 
         /* Start of actual BuildTools logic */
@@ -84,20 +107,29 @@ public class Bootstrap {
                 System.getProperty("java.version", "Unknown Version") + ", " +
                 System.getProperty("java.vendor", "Unknown Vendor") + ", " +
                 System.getProperty("os.arch", "Unknown architecture") + ")");
-        System.out.println("Working Directory: " + CWD.getAbsolutePath());
+        System.out.println("Working Directory: '" + CWD.getAbsolutePath() + "'");
         System.out.println();
 
         /* Start Builder */
 
         final long buildStart = System.nanoTime();  // Using nanos to be independent of the system clock
 
-        // TODO: Don't use try/catch?
         try {
-            Builder.main(options.has(dontUpdateFlag), options.has(generateSourceFlag), options.has(generateDocsFlag),
-                    options.has(devFlag), options.valuesOf(toCompile), options.has(jenkinsVersion),
-                    options.valueOf(jenkinsVersion), options.has(disableJavaCheck), options.has(compileIfChanged), outputDir.value(options));
-        } catch (GitAPIException | PatchFailedException ex) {
-            ex.printStackTrace();
+            new Builder(CWD, new Builder.BuilderConfiguration(skipUpdate, generateSrc, generateDoc,
+                    isDevMode, disableJavaCheck, onlyCompileOnChange, hasJenkinsVersion, jenkinsVersion, toCompile, outputDir))
+                    .runBuild();
+        } catch (GitAPIException | PatchFailedException | BuilderException ex) {
+            System.err.println();
+
+            if (ex instanceof BuilderException) {
+                System.err.println(ex.getMessage());
+
+                if (ex.getCause() != null) {
+                    ex.getCause().printStackTrace();
+                }
+            } else {
+                ex.printStackTrace();
+            }
 
             System.exit(1);
             return;
