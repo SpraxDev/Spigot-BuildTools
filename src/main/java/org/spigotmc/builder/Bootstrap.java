@@ -41,13 +41,13 @@ public class Bootstrap {
 
         /* parse args */
         OptionParser optionParser = new OptionParser();
-        OptionSpec<Void> helpFlag = optionParser.accepts("help", "Show the help");
+        OptionSpec<Void> helpFlag = optionParser.acceptsAll(Arrays.asList("help", "?"), "Show the help");
         OptionSpec<Void> disableCertFlag = optionParser.accepts("disable-certificate-check", "Disable HTTPS certificate check");
         OptionSpec<Void> disableJavaCheckFlag = optionParser.accepts("disable-java-check", "Disable Java version check");
-        OptionSpec<Void> skipUpdateFlag = optionParser.accepts("dont-update", "Don't pull updates from Git");
-        OptionSpec<Void> exitAfterFetchFlag = optionParser.accepts("exit-after-fetch", "Everything --rev unrelated is downloaded. No (de-)compiling");
-        OptionSpec<Void> generateSrcFlag = optionParser.accepts("generate-source", "Generate source jar");
-        OptionSpec<Void> generateDocFlag = optionParser.accepts("generate-docs", "Generate Javadoc jar");
+        OptionSpec<Void> skipUpdateFlag = optionParser.acceptsAll(Arrays.asList("skip-update", "dont-update"), "Don't pull updates from Git");
+        OptionSpec<Void> exitAfterFetchFlag = optionParser.accepts("exit-after-fetch", "Everything '--rev' unrelated is downloaded (No de-/compiling)");
+        OptionSpec<Void> generateSrcFlag = optionParser.acceptsAll(Arrays.asList("generate-src", "generate-source"), "Generate source jar");
+        OptionSpec<Void> generateDocFlag = optionParser.acceptsAll(Arrays.asList("generate-doc", "generate-docs"), "Generate Javadoc jar");
         OptionSpec<Void> devModeFlag = optionParser.accepts("dev", "Development mode");
         OptionSpec<File> outputDirFlag = optionParser.acceptsAll(Arrays.asList("o", "output-dir"), "Final jar output directory")
                 .withRequiredArg()
@@ -56,13 +56,14 @@ public class Bootstrap {
         OptionSpec<String> jenkinsVersionFlag = optionParser.accepts("rev", "Version to build")
                 .withRequiredArg()
                 .defaultsTo("latest");
-        OptionSpec<Compile> toCompileFlag = optionParser.accepts("compile", "Software to compile")
+        OptionSpec<Compile> toCompileFlag = optionParser.accepts("compile", "Comma separated list of software to compile")
                 .withRequiredArg()
                 .ofType(Compile.class)
                 .withValuesConvertedBy(new EnumConverter<Compile>(Compile.class) { })
                 .withValuesSeparatedBy(',')
                 .defaultsTo(Compile.SPIGOT);
-        OptionSpec<Void> onlyCompileOnChangeFlag = optionParser.accepts("compile-if-changed", "Run BuildTools only when changes are detected in the repository");
+        OptionSpec<Void> onlyCompileOnChangeFlag = optionParser.acceptsAll(Arrays.asList("compile-if-changed", "only-compile-on-changed"),
+                "Run BuildTools only when changes are detected in the repository");
 
         OptionSet options = optionParser.parse(args);
 

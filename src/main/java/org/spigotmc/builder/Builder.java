@@ -482,7 +482,7 @@ public class Builder {
                 File gitDir = Paths.get(cwd.getPath(), gitVersion, "PortableGit").toFile();
 
                 if (!gitDir.isDirectory()) {
-                    System.out.println("\n*** Downloading PortableGit ***");
+                    System.out.println("*** Downloading PortableGit ***");
 
                     String installerName = gitVersion + ".7z.exe";
 
@@ -500,7 +500,7 @@ public class Builder {
 
                 gitCmd = Paths.get(gitDir.getPath(), "bin", "git").toString();
                 shCmd = Paths.get(gitCmd, "..", "sh").toString();
-                System.out.println("\n*** Using PortableGit at '" + gitDir.getAbsolutePath() + "' ***\n");
+                System.out.println("*** Using PortableGit at '" + gitDir.getAbsolutePath() + "' ***");
             }
 
             if (Utils.doesCommandFail(cwd, gitCmd, "--version")) {
@@ -548,7 +548,7 @@ public class Builder {
             }
 
             mvnCmd = Paths.get(mvnDir.getPath(), "bin", "mvn" + (Bootstrap.IS_WINDOWS ? ".cmd" : "")).toString();
-            System.out.println("*** Using Maven3 at '" + mvnDir.getAbsolutePath() + "' ***\n");
+            System.out.println("*** Using Maven3 at '" + mvnDir.getAbsolutePath() + "' ***");
 
             return !Utils.doesCommandFail(cwd, mvnCmd, "-B", "--version");
         }
