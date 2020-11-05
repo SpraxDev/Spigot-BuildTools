@@ -3,7 +3,6 @@ package org.spigotmc.builder;
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.ObjectArrays;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
@@ -24,7 +23,6 @@ import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.FetchResult;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -33,8 +31,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.PrintStream;
-import java.lang.management.ManagementFactory;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.file.FileSystemException;
@@ -55,34 +51,18 @@ public class Builder {
     private static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
     private static final boolean AUTO_CRLF = !"\n".equals(System.getProperty("line.separator"));
 
-    private static String applyPatchesShell = "sh";
     private static boolean didClone = false;
 
-    private static File msysDir;
+    // These variables may be filled with the path to a portable installation
+    private static String gitCmd = "git";
+    private static String mvnCmd = "mvn";
+    private static String shCmd = "sh";
+    private static final String javaCmd = new File(new File(System.getProperty("java.home"), "bin"), "java").getAbsolutePath();
 
     // TODO: Don't use any static methods and enforce Builder to be instantiated instead
     public static void main(boolean dontUpdate, boolean generateSource, boolean generateDocs, boolean dev,
                             List<Compile> compile, boolean hasJenkinsVersion, String jenkinsVersion, boolean disableJavaCheck,
-                            boolean compileIfChanged, File outputDir) throws IOException, InterruptedException, GitAPIException, PatchFailedException {
-        // TODO: Remove this - commands should be escaped properly instead
-        if (CWD.getAbsolutePath().contains("'") ||
-                CWD.getAbsolutePath().contains("#") ||
-                CWD.getAbsolutePath().contains("~") ||
-                CWD.getAbsolutePath().contains("(") ||
-                CWD.getAbsolutePath().contains(")")) {
-            System.err.println("Please do not run in a path with special characters!");
-
-            System.exit(1);
-            return;
-        }
-
-        // TODO: Warn the user but don't enforce it (Give 1.5s time to read the warning)
-        if (CWD.getAbsolutePath().contains("Dropbox") ||
-                CWD.getAbsolutePath().contains("OneDrive")) {
-            System.err.println("Please do not run BuildTools in a Dropbox, OneDrive, or similar. You can always copy the completed jars there later.");
-            return;
-        }
-
+                            boolean compileIfChanged, File outputDir) throws IOException, GitAPIException, PatchFailedException {
         if ((dev || dontUpdate) && hasJenkinsVersion) {
             System.err.println("Using --dev or --dont-update with --rev makes no sense, exiting.");
 
@@ -90,72 +70,34 @@ public class Builder {
             return;
         }
 
-        try {
-            runProcess(CWD, "sh", "-c", "exit");    // TODO: Support cmd or don't - not even every linux distro uses 'sh' by default
-        } catch (Exception ex) {
-            if (IS_WINDOWS) {
-                String gitVersion = "PortableGit-2.24.1.2-" + (System.getProperty("os.arch").endsWith("64") ? "64" : "32") + "-bit";
-                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
-                String gitHash = System.getProperty("os.arch").endsWith("64") ?
-                        "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
-                        "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
-                msysDir = new File(gitVersion, "PortableGit");
-
-                if (!msysDir.isDirectory()) {
-                    System.out.println("*** Could not find PortableGit installation, downloading. ***");
-
-                    String gitName = gitVersion + ".7z.exe";
-                    File gitInstall = new File(gitVersion, gitName);
-                    gitInstall.deleteOnExit();
-                    gitInstall.getParentFile().mkdirs();
-
-                    if (!gitInstall.exists()) {
-                        downloadFile("https://static.spigotmc.org/git/" + gitName, gitInstall, HashFormat.SHA256, gitHash);
-                    }
-
-                    System.out.println("Extracting downloaded git install");
-                    // yes to all, silent, don't run. Only -y seems to work.
-                    runProcess(gitInstall.getParentFile(), gitInstall.getAbsolutePath(), "-y", "-gm2", "-nr");
-
-                    gitInstall.delete();
-                }
-
-                System.out.println("*** Using downloaded git " + msysDir + " ***");
-                System.out.println("*** Please note that this is a beta feature, so if it does not work please also try a manual install of git from https://git-for-windows.github.io/ ***");
-            } else {
-                System.out.println("You must run this jar through bash (msysgit)");
-
-                System.exit(1);
-                return;
-            }
-        }
-
-        try {
-            // TODO: Rewrite method: cross-platform, escaping, ...
-            runProcess(CWD, "git", "--version");
-        } catch (Exception ex) {
-            System.out.println("Could not successfully run git. Please ensure it is installed and functioning. " + ex.getMessage());
+        if (!prepareGitInstallation()) {
+            System.err.println("Could not run 'git' - Please install it on your machine");
+            System.err.println("More information at " +
+                    (IS_WINDOWS ? "https://git-for-windows.github.io/" : "https://git-scm.com/downloads"));
 
             System.exit(1);
             return;
         }
 
-        // TODO: DON'T set these globally!!!!!! Why should this be a good idea? :c
-        try {
-            runProcess(CWD, "git", "config", "--global", "--includes", "user.name");
-        } catch (Exception ex) {
-            System.out.println("Git name not set, setting it to default value.");
-            runProcess(CWD, "git", "config", "--global", "user.name", "BuildTools");
-        }
-        try {
-            runProcess(CWD, "git", "config", "--global", "--includes", "user.email");
-        } catch (Exception ex) {
-            System.out.println("Git email not set, setting it to default value.");
-            runProcess(CWD, "git", "config", "--global", "user.email", "unconfigured@null.spigotmc.org");
+        System.out.println();
+
+        if (!prepareMavenInstallation()) {
+            System.err.println("Could not run 'mvn' - Please install Maven3 on your machine");
+
+            System.exit(1);
+            return;
         }
 
-        // TODO: Make the following lines easier to read by moving it into its own method
+        if (Utils.doesCommandFail(CWD, shCmd, "-c", "exit")) {
+            System.err.println("Could not run '" + shCmd + "' - Please make sure it is available on your machine");
 
+            System.exit(-1);
+            return;
+        }
+
+        System.out.println();
+
+        /* TODO: Make the following lines easier to read by moving it into its own method */
         File workDir = new File("work");
         workDir.mkdir();
 
@@ -178,27 +120,6 @@ public class Builder {
         if (!buildData.exists() || !containsGit(buildData)) {
             clone("https://hub.spigotmc.org/stash/scm/spigot/builddata.git", buildData);
         }
-
-        File maven;
-        String m2Home = System.getenv("M2_HOME");   // TODO: Checking M2_ but downloading v3.6.0? Don't check even env, is not set by maven itself
-        if (m2Home == null || !(maven = new File(m2Home)).exists()) {
-            String mavenVersion = "apache-maven-3.6.0";
-            maven = new File(mavenVersion);
-
-            if (!maven.exists()) {
-                System.out.println("Maven does not exist, downloading. Please wait.");
-
-                File mvnTemp = new File(mavenVersion + "-bin.zip");
-                mvnTemp.deleteOnExit();
-
-                // https://www.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip.sha512
-                downloadFile("https://static.spigotmc.org/maven/" + mvnTemp.getName(), mvnTemp, HashFormat.SHA512, "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9");
-                unzip(mvnTemp, new File("."));
-                mvnTemp.delete();
-            }
-        }
-
-        String mvn = maven.getAbsolutePath() + "/bin/mvn";
 
         Git bukkitGit = Git.open(bukkit);
         Git craftBukkitGit = Git.open(craftBukkit);
@@ -313,15 +234,6 @@ public class Builder {
             }
         }
 
-        // TODO: What is this?
-        if (versionInfo.getServerUrl() == null) {
-            // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
-            applyPatchesShell = System.getenv().get("SHELL");
-            if (applyPatchesShell == null || applyPatchesShell.trim().isEmpty()) {
-                applyPatchesShell = "bash";
-            }
-        }
-
         Iterable<RevCommit> mappings = buildGit.log()
                 .addPath("mappings/")
                 .setMaxCount(1).call();
@@ -342,23 +254,32 @@ public class Builder {
             if (versionInfo.getClassMapCommand() == null) {
                 versionInfo.setClassMapCommand("java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}");
             }
-            runProcess(CWD, MessageFormat.format(versionInfo.getClassMapCommand(), vanillaJar.getPath(),
-                    "BuildData/mappings/" + versionInfo.getClassMappings() /* TODO: use File-class to construct path */, clMappedJar.getPath()).split(" "));
+            String[] args = MessageFormat.format(versionInfo.getClassMapCommand(), vanillaJar.getPath(),
+                    "BuildData/mappings/" + versionInfo.getClassMappings() /* TODO: use File-class to construct path */, clMappedJar.getPath()).split(" ");
+            String cmd = args[0];
+            args[0] = null;
+            Utils.runCommand(CWD, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
 
             if (versionInfo.getMemberMapCommand() == null) {
                 versionInfo.setMemberMapCommand("java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}");
             }
-            runProcess(CWD, MessageFormat.format(versionInfo.getMemberMapCommand(), clMappedJar.getPath(),
-                    "BuildData/mappings/" + versionInfo.getMemberMappings() /* TODO: use File-class to construct path */, mMappedJar.getPath()).split(" "));
+            args = MessageFormat.format(versionInfo.getMemberMapCommand(), clMappedJar.getPath(),
+                    "BuildData/mappings/" + versionInfo.getMemberMappings() /* TODO: use File-class to construct path */, mMappedJar.getPath()).split(" ");
+            cmd = args[0];
+            args[0] = null;
+            Utils.runCommand(CWD, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
 
             if (versionInfo.getFinalMapCommand() == null) {
                 versionInfo.setFinalMapCommand("java -jar BuildData/bin/SpecialSource.jar --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}");
             }
-            runProcess(CWD, MessageFormat.format(versionInfo.getFinalMapCommand(), mMappedJar.getPath(), "BuildData/mappings/" + versionInfo.getAccessTransforms(),
-                    "BuildData/mappings/" + versionInfo.getPackageMappings() /* TODO: use File-class to construct path */, finalMappedJar.getPath()).split(" "));
+            args = MessageFormat.format(versionInfo.getFinalMapCommand(), mMappedJar.getPath(), "BuildData/mappings/" + versionInfo.getAccessTransforms(),
+                    "BuildData/mappings/" + versionInfo.getPackageMappings() /* TODO: use File-class to construct path */, finalMappedJar.getPath()).split(" ");
+            cmd = args[0];
+            args[0] = null;
+            Utils.runCommand(CWD, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
         }
 
-        runProcess(CWD, "sh", mvn, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
+        Utils.runCommand(CWD, mvnCmd, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
                 "-DartifactId=minecraft-server", "-Dversion=" + versionInfo.getMinecraftVersion() + "-SNAPSHOT");
 
         File decompileDir = new File(workDir, "decompile-" + mappingsVersion);
@@ -374,7 +295,10 @@ public class Builder {
             }
 
             // TODO: Don't use #format because it could destroy paths when executed
-            runProcess(CWD, MessageFormat.format(versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath()).split(" "));
+            String[] args = MessageFormat.format(versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath()).split(" ");
+            String cmd = args[0];
+            args[0] = null;
+            Utils.runCommand(CWD, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
         }
 
         try {
@@ -467,35 +391,35 @@ public class Builder {
         if (compile.contains(Compile.CRAFTBUKKIT)) {
             System.out.println("Compiling Bukkit");
             if (dev) {
-                runProcess(bukkit, "sh", mvn, "-P", "development", "clean", "install");
+                Utils.runCommand(bukkit, mvnCmd, "-P", "development", "clean", "install");
             } else {
-                runProcess(bukkit, "sh", mvn, "clean", "install");
+                Utils.runCommand(bukkit, mvnCmd, "clean", "install");
             }
             if (generateDocs) {
-                runProcess(bukkit, "sh", mvn, "javadoc:jar");
+                Utils.runCommand(bukkit, mvnCmd, "javadoc:jar");
             }
             if (generateSource) {
-                runProcess(bukkit, "sh", mvn, "source:jar");
+                Utils.runCommand(bukkit, mvnCmd, "source:jar");
             }
 
             System.out.println("Compiling CraftBukkit");
             if (dev) {
-                runProcess(craftBukkit, "sh", mvn, "-P", "development", "clean", "install");
+                Utils.runCommand(craftBukkit, mvnCmd, "-P", "development", "clean", "install");
             } else {
-                runProcess(craftBukkit, "sh", mvn, "clean", "install");
+                Utils.runCommand(craftBukkit, mvnCmd, "clean", "install");
             }
         }
 
         try {
-            runProcess(spigot, applyPatchesShell, "applyPatches.sh");
+            Utils.runCommand(spigot, shCmd, "applyPatches.sh");
             System.out.println("*** Spigot patches applied!");
 
             if (compile.contains(Compile.SPIGOT)) {
                 System.out.println("Compiling Spigot & Spigot-API");
                 if (dev) {
-                    runProcess(spigot, "sh", mvn, "-P", "development", "clean", "install");
+                    Utils.runCommand(spigot, mvnCmd, "-P", "development", "clean", "install");
                 } else {
-                    runProcess(spigot, "sh", mvn, "clean", "install");
+                    Utils.runCommand(spigot, mvnCmd, "clean", "install");
                 }
             }
         } catch (Exception ex) {
@@ -520,6 +444,95 @@ public class Builder {
         if (compile.contains(Compile.SPIGOT)) {
             copyJar("Spigot/Spigot-Server/target", "spigot", new File(outputDir, "spigot-" + versionInfo.getMinecraftVersion() + ".jar"));
         }
+    }
+
+    private static boolean prepareGitInstallation() throws IOException {
+        if (Utils.doesCommandFail(CWD, gitCmd, "--version")) {
+            if (IS_WINDOWS) {
+                boolean arch64 = System.getProperty("os.arch").endsWith("64");
+
+                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
+                String gitVersion = "PortableGit-2.24.1.2-" + (arch64 ? "64" : "32") + "-bit";
+                String gitHash = arch64 ?
+                        "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
+                        "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
+
+                File gitDir = new File(new File(CWD, gitVersion), "PortableGit");
+
+                if (!gitDir.isDirectory()) {
+                    System.out.println("\n*** Downloading PortableGit ***");
+
+                    String installerName = gitVersion + ".7z.exe";
+
+                    File gitInstaller = new File(gitDir.getParentFile(), installerName);
+                    gitInstaller.deleteOnExit();
+
+                    downloadFile("https://static.spigotmc.org/git/" + installerName, gitInstaller, HashFormat.SHA256, gitHash);
+
+                    System.out.println("Extracting downloaded git installer");
+                    // yes to all, silent, don't run. Only -y seems to work.
+                    Utils.runCommand(gitInstaller.getParentFile(), gitInstaller.getAbsolutePath(), "-y", "-gm2", "-nr");
+
+                    java.nio.file.Files.deleteIfExists(gitInstaller.toPath());
+                }
+
+                gitCmd = new File(new File(gitDir, "bin"), "git").getAbsolutePath();
+                shCmd = new File(new File(gitCmd).getParentFile(), "sh").getAbsolutePath();
+                System.out.println("\n*** Using PortableGit at " + gitDir.getAbsolutePath() + " ***\n");
+            }
+
+            if (Utils.doesCommandFail(CWD, gitCmd, "--version")) {
+                return false;
+            }
+        }
+
+        // TODO: DON'T set these globally!!!!!! Why should this be a good idea? :c
+        try {
+            Utils.runCommand(CWD, gitCmd, "config", "--global", "--includes", "user.name");
+        } catch (Exception ex) {
+            System.out.println("Git name not set, setting it to default value.");
+            Utils.runCommand(CWD, gitCmd, "config", "--global", "user.name", "BuildTools");
+        }
+
+        try {
+            Utils.runCommand(CWD, gitCmd, "config", "--global", "--includes", "user.email");
+        } catch (Exception ex) {
+            System.out.println("Git email not set, setting it to default value.");
+            Utils.runCommand(CWD, gitCmd, "config", "--global", "user.email", "unconfigured@null.spigotmc.org");
+        }
+
+        return true;
+    }
+
+    private static boolean prepareMavenInstallation() throws IOException {
+        if (Utils.doesCommandFail(CWD, mvnCmd, "-B", "--version")) {
+            // https://www.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip.sha512
+            String mvnVersion = "apache-maven-3.6.0";
+            String mvnHash = "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9";
+
+            File mvnDir = new File(CWD, mvnVersion);
+
+            if (!mvnDir.isDirectory()) {
+                System.out.println("\n*** Downloading Maven3 ***");
+
+                File mvnZip = new File(mvnDir.getParentFile(), mvnVersion + "-bin.zip");
+                mvnZip.deleteOnExit();
+
+                downloadFile("https://static.spigotmc.org/maven/" + mvnZip.getName(), mvnZip, HashFormat.SHA512, mvnHash);
+
+                System.out.println("Extracting downloaded maven archive");
+                unzip(mvnZip, mvnDir.getParentFile());
+
+                java.nio.file.Files.deleteIfExists(mvnZip.toPath());
+            }
+
+            mvnCmd = new File(new File(mvnDir, "bin"), "mvn" + (IS_WINDOWS ? ".cmd" : "")).getAbsolutePath();
+            System.out.println("*** Using Maven3 at " + mvnDir.getAbsolutePath() + " ***\n");
+
+            return !Utils.doesCommandFail(CWD, mvnCmd, "-B", "--version");
+        }
+
+        return true;
     }
 
     private static boolean checkHash(File vanillaJar, VersionInfo versionInfo, boolean dev) throws IOException {
@@ -581,105 +594,6 @@ public class Builder {
 
         // Return true if fetch changed any tracking refs.
         return !result.getTrackingRefUpdates().isEmpty();
-    }
-
-    public static int runProcess(File workDir, String... command) throws IOException, InterruptedException {
-        if (msysDir != null) {
-            if ("bash".equals(command[0])) {
-                command[0] = "git-bash";
-            }
-
-            String[] shim = new String[] {"cmd.exe", "/D", "/C"};
-            command = ObjectArrays.concat(shim, command, String.class);
-        }
-
-        return runProcess0(workDir, command);
-    }
-
-    private static int runProcess0(File workDir, String... command) throws IOException, InterruptedException {
-        Preconditions.checkArgument(workDir != null, "workDir");
-        Preconditions.checkArgument(command != null && command.length > 0, "Invalid command");
-
-        if (command[0].equals("java")) {
-            command[0] = System.getProperty("java.home") + "/bin/" + command[0];
-        }
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.directory(workDir);
-
-        pb.environment().put("JAVA_HOME", System.getProperty("java.home"));
-        pb.environment().remove("M2_HOME"); // Just let maven figure this out from where it is invoked
-
-        if (!pb.environment().containsKey("MAVEN_OPTS")) {
-            pb.environment().put("MAVEN_OPTS", "-Xmx1024M");
-        }
-
-        if (!pb.environment().containsKey("_JAVA_OPTIONS")) {
-            StringBuilder javaOptions = new StringBuilder("-Djdk.net.URLClassPath.disableClassPathURLCheck=true");
-
-            for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
-                if (arg.startsWith("-Xmx")) {
-                    javaOptions.append(" ")
-                            .append(arg);
-                }
-            }
-
-            pb.environment().put("_JAVA_OPTIONS", javaOptions.toString());
-        }
-
-        if (msysDir != null) {
-            String pathEnv = null;
-
-            for (String key : pb.environment().keySet()) {
-                if (key.equalsIgnoreCase("path")) {
-                    pathEnv = key;
-                }
-            }
-
-            if (pathEnv == null) {
-                throw new IllegalStateException("Could not find path variable!");
-            }
-
-            String path = msysDir.getAbsolutePath() + ";" + new File(msysDir, "bin").getAbsolutePath() + ";" + pb.environment().get(pathEnv);
-            pb.environment().put(pathEnv, path);
-        }
-
-        final Process ps = pb.start();
-
-        new Thread(new StreamRedirector(ps.getInputStream(), System.out), "System.out redirector").start();
-        new Thread(new StreamRedirector(ps.getErrorStream(), System.err), "System.err redirector").start();
-
-        int status = ps.waitFor();
-
-        if (status != 0) {
-            throw new RuntimeException("Error running command, return status !=0: " + Arrays.toString(command));
-        }
-
-        return status;
-    }
-
-    private static class StreamRedirector implements Runnable {
-        private final InputStream in;
-        private final PrintStream out;
-
-        public StreamRedirector(InputStream in, PrintStream out) {
-            this.in = in;
-            this.out = out;
-        }
-
-        @Override
-        public void run() {
-            BufferedReader br = new BufferedReader(new InputStreamReader(in));
-
-            try {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    out.println(line);
-                }
-            } catch (IOException ex) {
-                throw new RuntimeException(ex);
-            }
-        }
     }
 
     public static void unzip(File zipFile, File targetFolder) throws IOException {

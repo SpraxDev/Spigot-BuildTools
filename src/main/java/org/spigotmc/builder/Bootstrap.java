@@ -82,8 +82,10 @@ public class Bootstrap {
         System.out.println("Running BuildTools version '" + Bootstrap.getBuildVersion() + "' (#" + Bootstrap.getBuildNumber() + ")");
         System.out.println("Java Version: " + JavaVersion.getCurrentVersion() + " (" +
                 System.getProperty("java.version", "Unknown Version") + ", " +
-                System.getProperty("java.vendor", "Unknown Vendor") + ")");
+                System.getProperty("java.vendor", "Unknown Vendor") + ", " +
+                System.getProperty("os.arch", "Unknown architecture") + ")");
         System.out.println("Working Directory: " + CWD.getAbsolutePath());
+        System.out.println();
 
         /* Start Builder */
 
@@ -94,7 +96,7 @@ public class Bootstrap {
             Builder.main(options.has(dontUpdateFlag), options.has(generateSourceFlag), options.has(generateDocsFlag),
                     options.has(devFlag), options.valuesOf(toCompile), options.has(jenkinsVersion),
                     options.valueOf(jenkinsVersion), options.has(disableJavaCheck), options.has(compileIfChanged), outputDir.value(options));
-        } catch (InterruptedException | GitAPIException | PatchFailedException ex) {
+        } catch (GitAPIException | PatchFailedException ex) {
             ex.printStackTrace();
 
             System.exit(1);
