@@ -1,12 +1,10 @@
 package org.spigotmc.builder;
 
-import difflib.PatchFailedException;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
 import joptsimple.util.EnumConverter;
 import org.apache.commons.io.output.TeeOutputStream;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.BufferedOutputStream;
@@ -118,7 +116,7 @@ public class Bootstrap {
             new Builder(CWD, new Builder.BuilderConfiguration(skipUpdate, generateSrc, generateDoc,
                     isDevMode, disableJavaCheck, onlyCompileOnChange, hasJenkinsVersion, jenkinsVersion, toCompile, outputDir))
                     .runBuild();
-        } catch (GitAPIException | PatchFailedException | BuilderException ex) {
+        } catch (Exception ex) {
             System.err.println();
 
             if (ex instanceof BuilderException) {

@@ -85,27 +85,27 @@ public class VersionInfo {
     }
 
     public String getClassMapCommand() {
+        if (classMapCommand == null) {
+            classMapCommand = "java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}";
+        }
+
         return classMapCommand;
     }
 
-    public void setClassMapCommand(String classMapCommand) {
-        this.classMapCommand = classMapCommand;
-    }
-
     public String getMemberMapCommand() {
+        if (memberMapCommand == null) {
+            return "java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}";
+        }
+
         return memberMapCommand;
     }
 
-    public void setMemberMapCommand(String memberMapCommand) {
-        this.memberMapCommand = memberMapCommand;
-    }
-
     public String getFinalMapCommand() {
-        return finalMapCommand;
-    }
+        if (finalMapCommand == null) {
+            return "java -jar BuildData/bin/SpecialSource.jar --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}";
+        }
 
-    public void setFinalMapCommand(String finalMapCommand) {
-        this.finalMapCommand = finalMapCommand;
+        return finalMapCommand;
     }
 
     public String getDecompileCommand() {

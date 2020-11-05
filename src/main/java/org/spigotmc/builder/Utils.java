@@ -38,6 +38,11 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -164,7 +169,71 @@ public class Utils {
         return executor.execute(cmdLine, env);
     }
 
-    public static boolean gitClone(@NotNull String url, @NotNull File target, boolean autoCRLF) throws GitAPIException, IOException {
+    /**
+     * This is an alias for:
+     * <p>
+     * {@code runTasksMultiThreaded(Math.max(2, Runtime.getRuntime().availableProcessors()), tasks)}
+     *
+     * @see #runTasksMultiThreaded(int, MultiThreadedTask...)
+     */
+    public static int runTasksMultiThreaded(MultiThreadedTask... tasks) throws Exception {
+        return runTasksMultiThreaded(Math.max(2, Runtime.getRuntime().availableProcessors()), tasks);
+    }
+
+    /**
+     * Runs the given tasks in multiple threads and blocks the calling
+     * thread until all the tasks have been executed or aborts
+     * <p>
+     * If a task throws an {@link Exception}, this method will throw it
+     * after all the other tasks finished (only from the last task throwing one!).
+     *
+     * @param threadCount The amount of threads to use for this task (uses {@code Math.min(threadCount, tasks.length)})
+     * @param tasks       The tasks to be executed
+     *
+     * @return {@code 0} if all tasks ran successfully, else the status code of the last failed task
+     *
+     * @throws Exception             The Exception thrown by the last last task throwing one
+     * @throws IllegalStateException If {@code tasks.length == 0}
+     */
+    public static int runTasksMultiThreaded(int threadCount, MultiThreadedTask... tasks) throws Exception {
+        if (threadCount <= 0) throw new IllegalArgumentException("threadCount needs to be larger than 0");
+        if (tasks.length == 0) throw new IllegalArgumentException("You have to provide tasks to execute");
+
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(threadCount, tasks.length));
+
+        AtomicInteger statusCode = new AtomicInteger();
+        AtomicReference<Exception> exception = new AtomicReference<>();
+
+        for (MultiThreadedTask task : tasks) {
+            pool.execute(() -> {
+                try {
+                    int result = task.runTask();
+
+                    if (result != 0) {
+                        statusCode.set(result);
+                    }
+                } catch (Exception ex) {
+                    exception.set(ex);
+                }
+            });
+        }
+
+        pool.shutdown();
+        pool.awaitTermination(60, TimeUnit.MINUTES);   // This *should* not be exceeded and Long.MAX_VALUE seems overkill
+
+        // Making sure there won't be any buggy/unwanted threads left
+        if (pool.shutdownNow().size() > 0) {
+            throw new IllegalStateException("There are still tasks in the queue after 1 hour of execution... This doesn't look right");
+        }
+
+        if (exception.get() != null) {
+            throw exception.get();
+        }
+
+        return statusCode.get();
+    }
+
+    public static void gitClone(@NotNull String url, @NotNull File target, boolean autoCRLF) throws GitAPIException, IOException {
         System.out.println("Cloning git repository '" + url + "' to '" + target.toString() + "'");
 
         try (Git result = Git.cloneRepository().setURI(url).setDirectory(target).call()) {
@@ -173,7 +242,6 @@ public class Utils {
             config.save();
 
             System.out.println("Successfully cloned '" + url + "' (HEAD: " + getCurrGitHeadHash(result) + ")");
-            return true;
         }
     }
 
@@ -250,5 +318,14 @@ public class Utils {
         // Trust host names
         HostnameVerifier allHostsValid = (hostname, session) -> true;
         HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+    }
+
+    public interface MultiThreadedTask {
+        /**
+         * @return A numeric status code (e.g. exit code)
+         *
+         * @throws Exception An exception that may be thrown by the task
+         */
+        int runTask() throws Exception;
     }
 }

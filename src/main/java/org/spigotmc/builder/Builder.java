@@ -3,10 +3,8 @@ package org.spigotmc.builder;
 import com.google.gson.Gson;
 import difflib.DiffUtils;
 import difflib.Patch;
-import difflib.PatchFailedException;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.jetbrains.annotations.NotNull;
 import org.spigotmc.builder.dummy.BuildInfo;
@@ -39,7 +37,7 @@ public class Builder {
         this.cfg = cfg;
     }
 
-    public void runBuild() throws IOException, GitAPIException, PatchFailedException, BuilderException {
+    public void runBuild() throws Exception {
         if ((cfg.isDevMode || cfg.skipUpdate) && cfg.hasJenkinsVersion) {
             throw new BuilderException("Using --dev or --dont-update with --rev makes no sense, exiting.");
         }
@@ -66,16 +64,22 @@ public class Builder {
         File workDir = new File(cwd, "work");
         Files.createDirectories(workDir.toPath());
 
-        boolean didClone = false;
-        for (GitRepository gRepo : GitRepository.values()) {
-            File repoDir = new File(cwd, gRepo.repoName);
+        Utils.MultiThreadedTask[] tasks = new Utils.MultiThreadedTask[GitRepository.values().length];
+        for (int i = 0; i < GitRepository.values().length; ++i) {
+            GitRepository repo = GitRepository.values()[i];
 
-            if (!new File(repoDir, ".git").isDirectory()) {
-                if (Utils.gitClone(gRepo.gitUrl, repoDir, Bootstrap.AUTO_CRLF)) {
-                    didClone = true;
+            tasks[i] = () -> {
+                File repoDir = new File(cwd, repo.repoName);
+
+                if (!new File(repoDir, ".git").isDirectory()) {
+                    Utils.gitClone(repo.gitUrl, repoDir, Bootstrap.AUTO_CRLF);
+                    return 1;   // Successful clone
                 }
-            }
+
+                return 0;   // No changes made
+            };
         }
+        boolean gitReposDidChange = Utils.runTasksMultiThreaded(tasks) == 1;    // 1 means at least one repo has been cloned
 
         try (Git bukkitGit = Git.open(new File(cwd, GitRepository.BUKKIT.repoName));
              Git craftBukkitGit = Git.open(new File(cwd, GitRepository.CRAFT_BUKKIT.repoName));
@@ -133,13 +137,16 @@ public class Builder {
                     }
                 }
 
-                boolean buildDataChanged = Utils.gitPull(buildDataGit, buildInfo.getRefs().getBuildData());
-                boolean bukkitChanged = Utils.gitPull(bukkitGit, buildInfo.getRefs().getBukkit());
-                boolean craftBukkitChanged = Utils.gitPull(craftBukkitGit, buildInfo.getRefs().getCraftBukkit());
-                boolean spigotChanged = Utils.gitPull(spigotGit, buildInfo.getRefs().getSpigot());
+                BuildInfo finalBuildInfo = buildInfo;
+                gitReposDidChange = Utils.runTasksMultiThreaded(
+                        () -> Utils.gitPull(buildDataGit, finalBuildInfo.getRefs().getBuildData()) ? 1 : 0,
+                        () -> Utils.gitPull(bukkitGit, finalBuildInfo.getRefs().getBukkit()) ? 1 : 0,
+                        () -> Utils.gitPull(craftBukkitGit, finalBuildInfo.getRefs().getCraftBukkit()) ? 1 : 0,
+                        () -> Utils.gitPull(spigotGit, finalBuildInfo.getRefs().getSpigot()) ? 1 : 0
+                ) == 1 || gitReposDidChange;
 
                 // Checks if any of the 4 repositories have been updated via a git fetch, the --compile-if-changed flag is set and none of the repositories were cloned in this run.
-                if (!buildDataChanged && !bukkitChanged && !craftBukkitChanged && !spigotChanged && cfg.onlyCompileOnChange && !didClone) {
+                if (!gitReposDidChange && cfg.onlyCompileOnChange) {
                     System.out.println("*** No changes detected in any of the repositories!");
                     System.out.println("*** Exiting due to the --compile-if-changes");
 
@@ -195,83 +202,87 @@ public class Builder {
                 File clMappedJar = new File(finalMappedJar + "-cl");
                 File mMappedJar = new File(finalMappedJar + "-m");
 
-                if (versionInfo.getClassMapCommand() == null) {
-                    versionInfo.setClassMapCommand("java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}");
-                }
+                // This cannot be run in parallel because they rely on each other, but
+                // I'm keeping this for better readability - notice the threadCount = 1
+                VersionInfo finalVersionInfo = versionInfo;
+                Utils.runTasksMultiThreaded(1, () -> {
+                            String[] args = finalVersionInfo.getClassMapCommand().split(" ");
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = cwd.toPath().relativize(vanillaJar.toPath()).toString();
+                                        break;
+                                    case "{1}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getClassMappings();
+                                        break;
+                                    case "{2}":
+                                        args[i] = cwd.toPath().relativize(clMappedJar.toPath()).toString();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
 
-                String[] args = versionInfo.getClassMapCommand().split(" ");
-                for (int i = 0; i < args.length; ++i) {
-                    switch (args[i]) {
-                        case "{0}":
-                            args[i] = cwd.toPath().relativize(vanillaJar.toPath()).toString();
-                            break;
-                        case "{1}":
-                            args[i] = "BuildData/mappings/" + versionInfo.getClassMappings();
-                            break;
-                        case "{2}":
-                            args[i] = cwd.toPath().relativize(clMappedJar.toPath()).toString();
-                            break;
-                        default:
-                            break;
-                    }
-                }
+                            String cmd = args[0];
+                            args[0] = null;
 
-                String cmd = args[0];
-                args[0] = null;
-                Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+                            Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
 
-                if (versionInfo.getMemberMapCommand() == null) {
-                    versionInfo.setMemberMapCommand("java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}");
-                }
+                            return 0;
+                        },
+                        () -> {
+                            String[] args = finalVersionInfo.getMemberMapCommand().split(" ");
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = cwd.toPath().relativize(clMappedJar.toPath()).toString();
+                                        break;
+                                    case "{1}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getMemberMappings();
+                                        break;
+                                    case "{2}":
+                                        args[i] = cwd.toPath().relativize(mMappedJar.toPath()).toString();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
 
-                args = versionInfo.getMemberMapCommand().split(" ");
-                for (int i = 0; i < args.length; ++i) {
-                    switch (args[i]) {
-                        case "{0}":
-                            args[i] = cwd.toPath().relativize(clMappedJar.toPath()).toString();
-                            break;
-                        case "{1}":
-                            args[i] = "BuildData/mappings/" + versionInfo.getMemberMappings();
-                            break;
-                        case "{2}":
-                            args[i] = cwd.toPath().relativize(mMappedJar.toPath()).toString();
-                            break;
-                        default:
-                            break;
-                    }
-                }
+                            String cmd = args[0];
+                            args[0] = null;
 
-                cmd = args[0];
-                args[0] = null;
-                Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+                            Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
 
-                if (versionInfo.getFinalMapCommand() == null) {
-                    versionInfo.setFinalMapCommand("java -jar BuildData/bin/SpecialSource.jar --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}");
-                }
+                            return 0;
+                        },
+                        () -> {
+                            String[] args = finalVersionInfo.getFinalMapCommand().split(" ");
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = cwd.toPath().relativize(mMappedJar.toPath()).toString();
+                                        break;
+                                    case "{1}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getAccessTransforms();
+                                        break;
+                                    case "{2}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getPackageMappings();
+                                        break;
+                                    case "{3}":
+                                        args[i] = cwd.toPath().relativize(finalMappedJar.toPath()).toString();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
 
-                args = versionInfo.getFinalMapCommand().split(" ");
-                for (int i = 0; i < args.length; ++i) {
-                    switch (args[i]) {
-                        case "{0}":
-                            args[i] = cwd.toPath().relativize(mMappedJar.toPath()).toString();
-                            break;
-                        case "{1}":
-                            args[i] = "BuildData/mappings/" + versionInfo.getAccessTransforms();
-                            break;
-                        case "{2}":
-                            args[i] = "BuildData/mappings/" + versionInfo.getPackageMappings();
-                            break;
-                        case "{3}":
-                            args[i] = cwd.toPath().relativize(finalMappedJar.toPath()).toString();
-                            break;
-                        default:
-                            break;
-                    }
-                }
+                            String cmd = args[0];
+                            args[0] = null;
 
-                cmd = args[0];
-                args[0] = null;
-                Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+                            Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+
+                            return 0;
+                        });
             }
 
             Utils.runCommand(cwd, mvnCmd, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
@@ -377,14 +388,27 @@ public class Builder {
             FileUtils.moveDirectory(tmpNms, nmsDir);
 
             if (versionInfo.getToolsVersion() < 93) {
-                File spigotApi = new File(spigotGit.getRepository().getDirectory().getParentFile(), "Bukkit");
-                if (!new File(spigotApi, ".git").isDirectory()) {
-                    Utils.gitClone("file://" + bukkitGit.getRepository().getDirectory().getParentFile().getAbsolutePath(), spigotApi, Bootstrap.AUTO_CRLF);
-                }
-                File spigotServer = new File(spigotGit.getRepository().getDirectory().getParentFile(), "CraftBukkit");
-                if (!new File(spigotServer, ".git").isDirectory()) {
-                    Utils.gitClone("file://" + craftBukkitGit.getRepository().getDirectory().getParentFile().getAbsolutePath(), spigotServer, Bootstrap.AUTO_CRLF);
-                }
+                Utils.runTasksMultiThreaded(
+                        () -> {
+                            File spigotApi = new File(spigotGit.getRepository().getDirectory().getParentFile(), "Bukkit");
+
+                            if (!spigotApi.exists()) {
+                                Utils.gitClone("file://" + bukkitGit.getRepository().getDirectory().getParentFile().getAbsolutePath(), spigotApi, Bootstrap.AUTO_CRLF);
+                            }
+
+                            return 0;
+                        },
+
+                        () -> {
+                            File spigotServer = new File(spigotGit.getRepository().getDirectory().getParentFile(), "CraftBukkit");
+
+                            if (!spigotServer.exists()) {
+                                Utils.gitClone("file://" + craftBukkitGit.getRepository().getDirectory().getParentFile().getAbsolutePath(), spigotServer, Bootstrap.AUTO_CRLF);
+                            }
+
+                            return 0;
+                        }
+                );
             }
 
             if (cfg.toCompile.contains(Compile.CRAFTBUKKIT)) {
