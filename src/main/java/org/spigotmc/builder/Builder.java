@@ -1,1067 +1,614 @@
 package org.spigotmc.builder;
 
-import com.google.common.base.Charsets;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.ObjectArrays;
-import com.google.common.hash.HashFunction;
-import com.google.common.hash.Hasher;
-import com.google.common.hash.Hashing;
-import com.google.common.io.ByteStreams;
-import com.google.common.io.CharStreams;
-import com.google.common.io.Files;
-import com.google.common.io.Resources;
 import com.google.gson.Gson;
 import difflib.DiffUtils;
 import difflib.Patch;
-import java.awt.Desktop;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
+import org.apache.commons.io.FileUtils;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.jetbrains.annotations.NotNull;
+import org.spigotmc.builder.dummy.BuildInfo;
+import org.spigotmc.builder.dummy.VersionInfo;
+
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
-import java.io.FilenameFilter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.PrintStream;
-import java.lang.management.ManagementFactory;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
-import java.text.MessageFormat;
-import java.util.Arrays;
-import java.util.Collections;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Date;
-import java.util.Enumeration;
 import java.util.List;
-import java.util.function.Predicate;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import joptsimple.OptionParser;
-import joptsimple.OptionSet;
-import joptsimple.OptionSpec;
-import joptsimple.util.EnumConverter;
-import lombok.RequiredArgsConstructor;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.output.TeeOutputStream;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.ResetCommand;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.api.errors.JGitInternalException;
-import org.eclipse.jgit.lib.StoredConfig;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.transport.FetchResult;
+import java.util.Objects;
 
-public class Builder
-{
+public class Builder {
+    private final File cwd;
+    private final BuilderConfiguration cfg;
 
-    public static final String LOG_FILE = "BuildTools.log.txt";
-    public static final boolean IS_WINDOWS = System.getProperty( "os.name" ).startsWith( "Windows" );
-    public static final File CWD = new File( "." );
-    private static final boolean autocrlf = !"\n".equals( System.getProperty( "line.separator" ) );
-    private static boolean dontUpdate;
-    private static List<Compile> compile;
-    private static boolean generateSource;
-    private static boolean generateDocs;
-    private static boolean dev;
-    private static String applyPatchesShell = "sh";
-    private static boolean didClone = false;
-    //
-    private static File msysDir;
+    private String gitCmd = "git";
+    private String mvnCmd = "mvn";
+    private String shCmd = "sh";
+    private final String javaCmd = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().normalize().toString();
 
-    public static void main(String[] args) throws Exception
-    {
-        logOutput();
+    public Builder(File cwd, BuilderConfiguration cfg) {
+        this.cwd = cwd;
+        this.cfg = cfg;
+    }
 
-        // May be null
-        String buildVersion = Builder.class.getPackage().getImplementationVersion();
-        int buildNumber = -1;
-        if ( buildVersion != null )
-        {
-            String[] split = buildVersion.split( "-" );
-            if ( split.length == 4 )
-            {
-                try
-                {
-                    buildNumber = Integer.parseInt( split[3] );
-                } catch ( NumberFormatException ex )
-                {
+    public void runBuild() throws Exception {
+        if ((cfg.isDevMode || cfg.skipUpdate) && cfg.hasJenkinsVersion) {
+            throw new BuilderException("Using --dev or --dont-update with --rev makes no sense, exiting.");
+        }
+
+        if (!prepareGitInstallation(cwd)) {
+            throw new BuilderException("Could not run 'git' - Please install it on your machine\n" +
+                    "More information at " + (Bootstrap.IS_WINDOWS ? "https://git-for-windows.github.io/" : "https://git-scm.com/downloads"));
+        }
+
+        System.out.println();
+
+        if (!prepareMavenInstallation(cwd)) {
+            throw new BuilderException("Could not run 'mvn' - Please install Maven3 on your machine");
+        }
+
+        if (Utils.doesCommandFail(cwd, shCmd, "-c", "exit")) {
+            throw new BuilderException("Could not run '" + shCmd + "' - Please make sure it is available on your machine");
+        }
+
+        System.out.println();
+
+        /* Prepare working directory by cloning all needed git repositories */
+
+        File workDir = new File(cwd, "work");
+        Files.createDirectories(workDir.toPath());
+
+        Utils.MultiThreadedTask[] tasks = new Utils.MultiThreadedTask[GitRepository.values().length];
+        for (int i = 0; i < GitRepository.values().length; ++i) {
+            GitRepository repo = GitRepository.values()[i];
+
+            tasks[i] = () -> {
+                File repoDir = new File(cwd, repo.repoName);
+
+                if (!new File(repoDir, ".git").isDirectory()) {
+                    Utils.gitClone(repo.gitUrl, repoDir, Bootstrap.AUTO_CRLF);
+                    return 1;   // Successful clone
                 }
-            }
+
+                return 0;   // No changes made
+            };
         }
+        boolean gitReposDidChange = Utils.runTasksMultiThreaded(tasks) == 1;    // 1 means at least one repo has been cloned
 
-        System.out.println( "Loading BuildTools version: " + buildVersion + " (#" + buildNumber + ")" );
-        System.out.println( "Java Version: " + JavaVersion.getCurrentVersion() );
-        System.out.println( "Current Path: " + CWD.getAbsolutePath() );
+        try (Git bukkitGit = Git.open(new File(cwd, GitRepository.BUKKIT.repoName));
+             Git craftBukkitGit = Git.open(new File(cwd, GitRepository.CRAFT_BUKKIT.repoName));
+             Git spigotGit = Git.open(new File(cwd, GitRepository.SPIGOT.repoName));
+             Git buildDataGit = Git.open(new File(cwd, GitRepository.BUILD_DATA.repoName))) {
+            BuildInfo buildInfo = new BuildInfo("Dev Build", "Development", 0, null,
+                    new BuildInfo.Refs("master", "master", "master", "master"));
 
-        if ( CWD.getAbsolutePath().contains( "'" ) || CWD.getAbsolutePath().contains( "#" ) || CWD.getAbsolutePath().contains( "~" ) || CWD.getAbsolutePath().contains( "(" ) || CWD.getAbsolutePath().contains( ")" ) )
-        {
-            System.err.println( "Please do not run in a path with special characters!" );
-            return;
-        }
+            if (!cfg.skipUpdate) {
+                if (!cfg.isDevMode) {
+                    System.out.println("Attempting to build version: '" + cfg.jenkinsVersion + "'" +
+                            (!cfg.hasJenkinsVersion ? " use --rev <version> to override" : ""));
 
-        if ( CWD.getAbsolutePath().contains( "Dropbox" ) || CWD.getAbsolutePath().contains( "OneDrive" ) )
-        {
-            System.err.println( "Please do not run BuildTools in a Dropbox, OneDrive, or similar. You can always copy the completed jars there later." );
-            return;
-        }
+                    String verInfo;
+                    try {
+                        verInfo = Utils.httpGet("https://hub.spigotmc.org/versions/" + cfg.jenkinsVersion + ".json");
+                    } catch (IOException ex) {
+                        throw new BuilderException("Could not get version '" + cfg.jenkinsVersion +
+                                "' does it exist? Try another version or use 'latest'", ex);
+                    }
+                    System.out.println("Found version");
+                    System.out.println(verInfo);
 
-        if ( false && System.console() == null )
-        {
-            JFrame jFrame = new JFrame();
-            jFrame.setTitle( "SpigotMC - BuildTools" );
-            jFrame.setDefaultCloseOperation( JFrame.EXIT_ON_CLOSE );
-            jFrame.getContentPane().add( new JLabel( "You have to run BuildTools through bash (msysgit). Please read our wiki." ) );
-            jFrame.pack();
-            jFrame.setVisible( true );
+                    // TODO: Abstract json parsing to not use a dummy class
+                    buildInfo = new Gson().fromJson(verInfo, BuildInfo.class);
 
-            Desktop.getDesktop().browse( new URI( "https://www.spigotmc.org/wiki/buildtools/" ) );
-            return;
-        }
-
-        OptionParser parser = new OptionParser();
-        OptionSpec<Void> help = parser.accepts( "help", "Show the help" );
-        OptionSpec<Void> disableCertFlag = parser.accepts( "disable-certificate-check", "Disable HTTPS certificate check" );
-        OptionSpec<Void> disableJavaCheck = parser.accepts( "disable-java-check", "Disable Java version check" );
-        OptionSpec<Void> dontUpdateFlag = parser.accepts( "dont-update", "Don't pull updates from Git" );
-        OptionSpec<Void> skipCompileFlag = parser.accepts( "skip-compile", "Skip compilation" );
-        OptionSpec<Void> generateSourceFlag = parser.accepts( "generate-source", "Generate source jar" );
-        OptionSpec<Void> generateDocsFlag = parser.accepts( "generate-docs", "Generate Javadoc jar" );
-        OptionSpec<Void> devFlag = parser.accepts( "dev", "Development mode" );
-        OptionSpec<File> outputDir = parser.acceptsAll( Arrays.asList( "o", "output-dir" ), "Final jar output directory" ).withRequiredArg().ofType( File.class ).defaultsTo( CWD );
-        OptionSpec<String> jenkinsVersion = parser.accepts( "rev", "Version to build" ).withRequiredArg().defaultsTo( "latest" );
-        OptionSpec<Compile> toCompile = parser.accepts( "compile", "Software to compile" ).withRequiredArg().ofType( Compile.class ).withValuesConvertedBy( new EnumConverter<Compile>( Compile.class )
-        {
-        } ).withValuesSeparatedBy( ',' );
-        OptionSpec<Void> compileIfChanged = parser.accepts( "compile-if-changed", "Run BuildTools only when changes are detected in the repository" );
-
-        OptionSet options = parser.parse( args );
-
-        if ( options.has( help ) )
-        {
-            parser.printHelpOn( System.out );
-            System.exit( 0 );
-        }
-        if ( options.has( disableCertFlag ) )
-        {
-            disableHttpsCertificateCheck();
-        }
-        dontUpdate = options.has( dontUpdateFlag );
-        generateSource = options.has( generateSourceFlag );
-        generateDocs = options.has( generateDocsFlag );
-        dev = options.has( devFlag );
-        compile = options.valuesOf( toCompile );
-        if ( options.has( skipCompileFlag ) )
-        {
-            compile = Collections.singletonList( Compile.NONE );
-            System.err.println( "--skip-compile is deprecated, please use --compile NONE" );
-        }
-        if ( ( dev || dontUpdate ) && options.has( jenkinsVersion ) )
-        {
-            System.err.println( "Using --dev or --dont-update with --rev makes no sense, exiting." );
-            System.exit( 1 );
-        }
-
-        try
-        {
-            runProcess( CWD, "sh", "-c", "exit" );
-        } catch ( Exception ex )
-        {
-            if ( IS_WINDOWS )
-            {
-                String gitVersion = "PortableGit-2.24.1.2-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
-                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
-                String gitHash = System.getProperty( "os.arch" ).endsWith( "64" ) ? "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" : "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
-                msysDir = new File( gitVersion, "PortableGit" );
-
-                if ( !msysDir.isDirectory() )
-                {
-                    System.out.println( "*** Could not find PortableGit installation, downloading. ***" );
-
-                    String gitName = gitVersion + ".7z.exe";
-                    File gitInstall = new File( gitVersion, gitName );
-                    gitInstall.deleteOnExit();
-                    gitInstall.getParentFile().mkdirs();
-
-                    if ( !gitInstall.exists() )
-                    {
-                        download( "https://static.spigotmc.org/git/" + gitName, gitInstall, HashFormat.SHA256, gitHash );
+                    if (Bootstrap.ORIGINAL_BUILD_NUMBER != -1 &&
+                            buildInfo.getToolsVersion() != -1 &&
+                            Bootstrap.ORIGINAL_BUILD_NUMBER < buildInfo.getToolsVersion()) {
+                        throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. " +
+                                "Please grab a new copy from https://github.com/SpraxDev/Spigot-BuildTools/releases/latest");
                     }
 
-                    System.out.println( "Extracting downloaded git install" );
-                    // yes to all, silent, don't run. Only -y seems to work
-                    runProcess( gitInstall.getParentFile(), gitInstall.getAbsolutePath(), "-y", "-gm2", "-nr" );
+                    if (!cfg.disableJavaCheck) {
+                        if (buildInfo.getJavaVersions() == null) {
+                            buildInfo.setJavaVersions(new int[] {JavaVersion.JAVA_7.getVersion(), JavaVersion.JAVA_8.getVersion()});
+                        }
 
-                    gitInstall.delete();
+                        if (buildInfo.getJavaVersions().length != 2) {
+                            throw new IllegalArgumentException("Expected only two Java versions, got " + JavaVersion.printVersions(buildInfo.getJavaVersions()));
+                        }
+
+                        JavaVersion curVersion = JavaVersion.getCurrentVersion();
+                        JavaVersion minVersion = JavaVersion.getByVersion(buildInfo.getJavaVersions()[0]);
+                        JavaVersion maxVersion = JavaVersion.getByVersion(buildInfo.getJavaVersions()[1]);
+
+                        if (curVersion.getVersion() < minVersion.getVersion() || curVersion.getVersion() > maxVersion.getVersion()) {
+                            throw new BuilderException("*** The version you have requested to build requires Java versions between " +
+                                    JavaVersion.printVersions(buildInfo.getJavaVersions()) + ", but you are using '" + curVersion + "'\n" +
+
+                                    "*** Please rerun BuildTools using an appropriate Java version. For obvious " +
+                                    "reasons outdated MC versions do not support Java versions that did not exist at their release.");
+                        }
+                    }
                 }
 
-                System.out.println( "*** Using downloaded git " + msysDir + " ***" );
-                System.out.println( "*** Please note that this is a beta feature, so if it does not work please also try a manual install of git from https://git-for-windows.github.io/ ***" );
-            } else
-            {
-                System.out.println( "You must run this jar through bash (msysgit)" );
-                System.exit( 1 );
-            }
-        }
+                BuildInfo finalBuildInfo = buildInfo;
+                gitReposDidChange = Utils.runTasksMultiThreaded(
+                        () -> Utils.gitPull(buildDataGit, finalBuildInfo.getRefs().getBuildData()) ? 1 : 0,
+                        () -> Utils.gitPull(bukkitGit, finalBuildInfo.getRefs().getBukkit()) ? 1 : 0,
+                        () -> Utils.gitPull(craftBukkitGit, finalBuildInfo.getRefs().getCraftBukkit()) ? 1 : 0,
+                        () -> Utils.gitPull(spigotGit, finalBuildInfo.getRefs().getSpigot()) ? 1 : 0
+                ) == 1 || gitReposDidChange;
 
-        try
-        {
-            runProcess( CWD, "git", "--version" );
-        } catch ( Exception ex )
-        {
-            System.out.println( "Could not successfully run git. Please ensure it is installed and functioning. " + ex.getMessage() );
-            System.exit( 1 );
-        }
+                // Checks if any of the 4 repositories have been updated via a git fetch, the --compile-if-changed flag is set and none of the repositories were cloned in this run.
+                if (!gitReposDidChange && cfg.onlyCompileOnChange) {
+                    System.out.println("*** No changes detected in any of the repositories!");
+                    System.out.println("*** Exiting due to the --compile-if-changes");
 
-        try
-        {
-            runProcess( CWD, "git", "config", "--global", "--includes", "user.name" );
-        } catch ( Exception ex )
-        {
-            System.out.println( "Git name not set, setting it to default value." );
-            runProcess( CWD, "git", "config", "--global", "user.name", "BuildTools" );
-        }
-        try
-        {
-            runProcess( CWD, "git", "config", "--global", "--includes", "user.email" );
-        } catch ( Exception ex )
-        {
-            System.out.println( "Git email not set, setting it to default value." );
-            runProcess( CWD, "git", "config", "--global", "user.email", "unconfigured@null.spigotmc.org" );
-        }
-
-        File workDir = new File( "work" );
-        workDir.mkdir();
-
-        File bukkit = new File( "Bukkit" );
-        if ( !bukkit.exists() || !containsGit( bukkit ) )
-        {
-            clone( "https://hub.spigotmc.org/stash/scm/spigot/bukkit.git", bukkit );
-        }
-
-        File craftBukkit = new File( "CraftBukkit" );
-        if ( !craftBukkit.exists() || !containsGit( craftBukkit ) )
-        {
-            clone( "https://hub.spigotmc.org/stash/scm/spigot/craftbukkit.git", craftBukkit );
-        }
-
-        File spigot = new File( "Spigot" );
-        if ( !spigot.exists() || !containsGit( spigot ) )
-        {
-            clone( "https://hub.spigotmc.org/stash/scm/spigot/spigot.git", spigot );
-        }
-
-        File buildData = new File( "BuildData" );
-        if ( !buildData.exists() || !containsGit( buildData ) )
-        {
-            clone( "https://hub.spigotmc.org/stash/scm/spigot/builddata.git", buildData );
-        }
-
-        File maven;
-        String m2Home = System.getenv( "M2_HOME" );
-        if ( m2Home == null || !( maven = new File( m2Home ) ).exists() )
-        {
-            String mavenVersion = "apache-maven-3.6.0";
-            maven = new File( mavenVersion );
-
-            if ( !maven.exists() )
-            {
-                System.out.println( "Maven does not exist, downloading. Please wait." );
-
-                File mvnTemp = new File( mavenVersion + "-bin.zip" );
-                mvnTemp.deleteOnExit();
-
-                // https://www.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip.sha512
-                download( "https://static.spigotmc.org/maven/" + mvnTemp.getName(), mvnTemp, HashFormat.SHA512, "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9" );
-                unzip( mvnTemp, new File( "." ) );
-                mvnTemp.delete();
-            }
-        }
-
-        String mvn = maven.getAbsolutePath() + "/bin/mvn";
-
-        Git bukkitGit = Git.open( bukkit );
-        Git craftBukkitGit = Git.open( craftBukkit );
-        Git spigotGit = Git.open( spigot );
-        Git buildGit = Git.open( buildData );
-
-        BuildInfo buildInfo = new BuildInfo( "Dev Build", "Development", 0, null, new BuildInfo.Refs( "master", "master", "master", "master" ) );
-
-        if ( !dontUpdate )
-        {
-            if ( !dev )
-            {
-                String askedVersion = options.valueOf( jenkinsVersion );
-                System.out.println( "Attempting to build version: '" + askedVersion + "' use --rev <version> to override" );
-
-                String verInfo;
-                try
-                {
-                    verInfo = get( "https://hub.spigotmc.org/versions/" + askedVersion + ".json" );
-                } catch ( IOException ex )
-                {
-                    System.err.println( "Could not get version " + askedVersion + " does it exist? Try another version or use 'latest'" );
-                    ex.printStackTrace();
-                    System.exit( 1 );
                     return;
                 }
-                System.out.println( "Found version" );
-                System.out.println( verInfo );
-
-                buildInfo = new Gson().fromJson( verInfo, BuildInfo.class );
-
-                if ( buildNumber != -1 && buildInfo.getToolsVersion() != -1 && buildNumber < buildInfo.getToolsVersion() )
-                {
-                    System.err.println( "**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl" );
-                    System.exit( 1 );
-                }
-
-                if ( !options.has( disableJavaCheck ) )
-                {
-                    if ( buildInfo.getJavaVersions() == null )
-                    {
-                        buildInfo.setJavaVersions( new int[]
-                        {
-                            JavaVersion.JAVA_7.getVersion(), JavaVersion.JAVA_8.getVersion()
-                        } );
-                    }
-
-                    Preconditions.checkArgument( buildInfo.getJavaVersions().length == 2, "Expected only two Java versions, got %s", JavaVersion.printVersions( buildInfo.getJavaVersions() ) );
-
-                    JavaVersion curVersion = JavaVersion.getCurrentVersion();
-                    JavaVersion minVersion = JavaVersion.getByVersion( buildInfo.getJavaVersions()[0] );
-                    JavaVersion maxVersion = JavaVersion.getByVersion( buildInfo.getJavaVersions()[1] );
-
-                    if ( curVersion.getVersion() < minVersion.getVersion() || curVersion.getVersion() > maxVersion.getVersion() )
-                    {
-                        System.err.println( "*** The version you have requested to build requires Java versions between " + JavaVersion.printVersions( buildInfo.getJavaVersions() ) + ", but you are using " + curVersion );
-                        System.err.println( "*** Please rerun BuildTools using an appropriate Java version. For obvious reasons outdated MC versions do not support Java versions that did not exist at their release." );
-                        System.exit( 1 );
-                    }
-                }
             }
 
-            boolean buildDataChanged = pull( buildGit, buildInfo.getRefs().getBuildData() );
-            boolean bukkitChanged = pull( bukkitGit, buildInfo.getRefs().getBukkit() );
-            boolean craftBukkitChanged = pull( craftBukkitGit, buildInfo.getRefs().getCraftBukkit() );
-            boolean spigotChanged = pull( spigotGit, buildInfo.getRefs().getSpigot() );
-
-            // Checks if any of the 4 repositories have been updated via a fetch, the --compile-if-changed flag is set and none of the repositories were cloned in this run.
-            if ( !buildDataChanged && !bukkitChanged && !craftBukkitChanged && !spigotChanged && options.has( compileIfChanged ) && !didClone )
-            {
-                System.out.println( "*** No changes detected in any of the repositories!" );
-                System.out.println( "*** Exiting due to the --compile-if-changes" );
-                System.exit( 0 );
-            }
-        }
-
-        VersionInfo versionInfo = new Gson().fromJson(
-                Files.asCharSource( new File( "BuildData/info.json" ), Charsets.UTF_8 ).read(),
-                VersionInfo.class
-        );
-        // Default to 1.8 builds.
-        if ( versionInfo == null )
-        {
-            versionInfo = new VersionInfo( "1.8", "bukkit-1.8.at", "bukkit-1.8-cl.csrg", "bukkit-1.8-members.csrg", "package.srg", null );
-        }
-        System.out.println( "Attempting to build Minecraft with details: " + versionInfo );
-
-        if ( buildNumber != -1 && versionInfo.getToolsVersion() != -1 && buildNumber < versionInfo.getToolsVersion() )
-        {
-            System.err.println( "" );
-            System.err.println( "**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://www.spigotmc.org/go/buildtools-dl" );
-            System.exit( 1 );
-        }
-
-        File vanillaJar = new File( workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar" );
-        if ( !vanillaJar.exists() || !checkHash( vanillaJar, versionInfo ) )
-        {
-            if ( versionInfo.getServerUrl() != null )
-            {
-                download( versionInfo.getServerUrl(), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash() );
-            } else
-            {
-                download( String.format( "https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar", versionInfo.getMinecraftVersion() ), vanillaJar, HashFormat.MD5, versionInfo.getMinecraftHash() );
-            }
-        }
-
-        if ( versionInfo.getServerUrl() == null )
-        {
-            // Legacy versions can also specify a specific shell to build with which has to be bash-compatible
-            applyPatchesShell = System.getenv().get( "SHELL" );
-            if ( applyPatchesShell == null || applyPatchesShell.trim().isEmpty() )
-            {
-                applyPatchesShell = "bash";
-            }
-        }
-
-        Iterable<RevCommit> mappings = buildGit.log()
-                .addPath( "mappings/" )
-                .setMaxCount( 1 ).call();
-
-        Hasher mappingsHash = HashFormat.MD5.getHash().newHasher();
-        for ( RevCommit rev : mappings )
-        {
-            mappingsHash.putString( rev.getName(), Charsets.UTF_8 );
-        }
-        String mappingsVersion = mappingsHash.hash().toString().substring( 24 ); // Last 8 chars
-
-        File finalMappedJar = new File( workDir, "mapped." + mappingsVersion + ".jar" );
-        if ( !finalMappedJar.exists() )
-        {
-            System.out.println( "Final mapped jar: " + finalMappedJar + " does not exist, creating (please wait)!" );
-
-            File clMappedJar = new File( finalMappedJar + "-cl" );
-            File mMappedJar = new File( finalMappedJar + "-m" );
-
-            if ( versionInfo.getClassMapCommand() == null )
-            {
-                versionInfo.setClassMapCommand( "java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}" );
-            }
-            runProcess( CWD, MessageFormat.format( versionInfo.getClassMapCommand(), vanillaJar.getPath(), "BuildData/mappings/" + versionInfo.getClassMappings(), clMappedJar.getPath() ).split( " " ) );
-
-            if ( versionInfo.getMemberMapCommand() == null )
-            {
-                versionInfo.setMemberMapCommand( "java -jar BuildData/bin/SpecialSource-2.jar map -i {0} -m {1} -o {2}" );
-            }
-            runProcess( CWD, MessageFormat.format( versionInfo.getMemberMapCommand(), clMappedJar.getPath(),
-                    "BuildData/mappings/" + versionInfo.getMemberMappings(), mMappedJar.getPath() ).split( " " ) );
-
-            if ( versionInfo.getFinalMapCommand() == null )
-            {
-                versionInfo.setFinalMapCommand( "java -jar BuildData/bin/SpecialSource.jar --kill-lvt -i {0} --access-transformer {1} -m {2} -o {3}" );
-            }
-            runProcess( CWD, MessageFormat.format( versionInfo.getFinalMapCommand(), mMappedJar.getPath(), "BuildData/mappings/" + versionInfo.getAccessTransforms(),
-                    "BuildData/mappings/" + versionInfo.getPackageMappings(), finalMappedJar.getPath() ).split( " " ) );
-        }
-
-        runProcess( CWD, "sh", mvn, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
-                "-DartifactId=minecraft-server", "-Dversion=" + versionInfo.getMinecraftVersion() + "-SNAPSHOT" );
-
-        File decompileDir = new File( workDir, "decompile-" + mappingsVersion );
-        if ( !decompileDir.exists() )
-        {
-            decompileDir.mkdir();
-
-            File clazzDir = new File( decompileDir, "classes" );
-            unzip( finalMappedJar, clazzDir, new Predicate<String>()
-            {
-
-                @Override
-                public boolean test(String input)
-                {
-                    return input.startsWith( "net/minecraft/server" );
-                }
-            } );
-            if ( versionInfo.getDecompileCommand() == null )
-            {
-                versionInfo.setDecompileCommand( "java -jar BuildData/bin/fernflower.jar -dgs=1 -hdc=0 -rbr=0 -asc=1 -udv=0 {0} {1}" );
+            if (cfg.exitAfterFetch) {
+                System.out.println("Finished fetching all version unrelated data. Exiting because of '--exit-after-fetch'");
+                return;
             }
 
-            runProcess( CWD, MessageFormat.format( versionInfo.getDecompileCommand(), clazzDir.getPath(), decompileDir.getPath() ).split( " " ) );
-        }
+            VersionInfo versionInfo = new Gson().fromJson(
+                    FileUtils.readFileToString(new File("BuildData/info.json"), StandardCharsets.UTF_8),
+                    VersionInfo.class
+            );
+            // Default to 1.8 builds.
+            if (versionInfo == null) {
+                versionInfo = new VersionInfo("1.8", "bukkit-1.8.at",
+                        "bukkit-1.8-cl.csrg", "bukkit-1.8-members.csrg",
+                        "package.srg", null);
+            }
+            System.out.println("Attempting to build Minecraft with details: " + versionInfo);
 
-        try
-        {
-            File latestLink = new File( workDir, "decompile-latest" );
-            latestLink.delete();
-
-            java.nio.file.Files.createSymbolicLink( latestLink.toPath(), decompileDir.getParentFile().toPath().relativize( decompileDir.toPath() ) );
-        } catch ( UnsupportedOperationException ex )
-        {
-            // Ignore if not possible
-        } catch ( FileSystemException ex )
-        {
-            // Not running as admin on Windows
-        } catch ( IOException ex )
-        {
-            System.out.println( "Did not create decompile-latest link " + ex.getMessage() );
-        }
-
-        System.out.println( "Applying CraftBukkit Patches" );
-        File nmsDir = new File( craftBukkit, "src/main/java/net" );
-        if ( nmsDir.exists() )
-        {
-            System.out.println( "Backing up NMS dir" );
-            FileUtils.moveDirectory( nmsDir, new File( workDir, "nms.old." + System.currentTimeMillis() ) );
-        }
-        File patchDir = new File( craftBukkit, "nms-patches" );
-        for ( File file : patchDir.listFiles() )
-        {
-            if ( !file.getName().endsWith( ".patch" ) )
-            {
-                continue;
+            if (Bootstrap.ORIGINAL_BUILD_NUMBER != -1 &&
+                    versionInfo.getToolsVersion() != -1 &&
+                    Bootstrap.ORIGINAL_BUILD_NUMBER < versionInfo.getToolsVersion()) {
+                throw new BuilderException("**** Your BuildTools is out of date and will not build the requested version. Please grab a new copy from https://github.com/SpraxDev/Spigot-BuildTools/releases/latest");
             }
 
-            String targetFile = "net/minecraft/server/" + file.getName().replace( ".patch", ".java" );
-
-            File clean = new File( decompileDir, targetFile );
-            File t = new File( nmsDir.getParentFile(), targetFile );
-            t.getParentFile().mkdirs();
-
-            System.out.println( "Patching with " + file.getName() );
-
-            List<String> readFile = Files.readLines( file, Charsets.UTF_8 );
-
-            // Manually append prelude if it is not found in the first few lines.
-            boolean preludeFound = false;
-            for ( int i = 0; i < Math.min( 3, readFile.size() ); i++ )
-            {
-                if ( readFile.get( i ).startsWith( "+++" ) )
-                {
-                    preludeFound = true;
-                    break;
-                }
-            }
-            if ( !preludeFound )
-            {
-                readFile.add( 0, "+++" );
-            }
-
-            Patch parsedPatch = DiffUtils.parseUnifiedDiff( readFile );
-            List<?> modifiedLines = DiffUtils.patch( Files.readLines( clean, Charsets.UTF_8 ), parsedPatch );
-
-            BufferedWriter bw = new BufferedWriter( new FileWriter( t ) );
-            for ( Object line : modifiedLines )
-            {
-                bw.write( (String) line );
-                bw.newLine();
-            }
-            bw.close();
-        }
-        File tmpNms = new File( craftBukkit, "tmp-nms" );
-        FileUtils.copyDirectory( nmsDir, tmpNms );
-
-        craftBukkitGit.branchDelete().setBranchNames( "patched" ).setForce( true ).call();
-        craftBukkitGit.checkout().setCreateBranch( true ).setForceRefUpdate( true ).setName( "patched" ).call();
-        craftBukkitGit.add().addFilepattern( "src/main/java/net/" ).call();
-        craftBukkitGit.commit().setSign( false ).setMessage( "CraftBukkit $ " + new Date() ).call();
-        craftBukkitGit.checkout().setName( buildInfo.getRefs().getCraftBukkit() ).call();
-
-        FileUtils.moveDirectory( tmpNms, nmsDir );
-
-        if ( versionInfo.getToolsVersion() < 93 )
-        {
-            File spigotApi = new File( spigot, "Bukkit" );
-            if ( !spigotApi.exists() )
-            {
-                clone( "file://" + bukkit.getAbsolutePath(), spigotApi );
-            }
-            File spigotServer = new File( spigot, "CraftBukkit" );
-            if ( !spigotServer.exists() )
-            {
-                clone( "file://" + craftBukkit.getAbsolutePath(), spigotServer );
-            }
-        }
-
-        // Git spigotApiGit = Git.open( spigotApi );
-        // Git spigotServerGit = Git.open( spigotServer );
-        if ( compile == null || compile.isEmpty() )
-        {
-            if ( versionInfo.getToolsVersion() <= 104 || dev )
-            {
-                compile = Arrays.asList( Compile.CRAFTBUKKIT, Compile.SPIGOT );
-            } else
-            {
-                compile = Collections.singletonList( Compile.SPIGOT );
-            }
-        }
-        if ( compile.contains( Compile.CRAFTBUKKIT ) )
-        {
-            System.out.println( "Compiling Bukkit" );
-            if ( dev )
-            {
-                runProcess( bukkit, "sh", mvn, "-P", "development", "clean", "install" );
-            } else
-            {
-                runProcess( bukkit, "sh", mvn, "clean", "install" );
-            }
-            if ( generateDocs )
-            {
-                runProcess( bukkit, "sh", mvn, "javadoc:jar" );
-            }
-            if ( generateSource )
-            {
-                runProcess( bukkit, "sh", mvn, "source:jar" );
-            }
-
-            System.out.println( "Compiling CraftBukkit" );
-            if ( dev )
-            {
-                runProcess( craftBukkit, "sh", mvn, "-P", "development", "clean", "install" );
-            } else
-            {
-                runProcess( craftBukkit, "sh", mvn, "clean", "install" );
-            }
-        }
-
-        try
-        {
-            runProcess( spigot, applyPatchesShell, "applyPatches.sh" );
-            System.out.println( "*** Spigot patches applied!" );
-
-            if ( compile.contains( Compile.SPIGOT ) )
-            {
-                System.out.println( "Compiling Spigot & Spigot-API" );
-                if ( dev )
-                {
-                    runProcess( spigot, "sh", mvn, "-P", "development", "clean", "install" );
-                } else
-                {
-                    runProcess( spigot, "sh", mvn, "clean", "install" );
-                }
-            }
-        } catch ( Exception ex )
-        {
-            System.err.println( "Error compiling Spigot. Please check the wiki for FAQs." );
-            System.err.println( "If this does not resolve your issue then please pastebin the entire BuildTools.log.txt file when seeking support." );
-            ex.printStackTrace();
-            System.exit( 1 );
-        }
-
-        for ( int i = 0; i < 35; i++ )
-        {
-            System.out.println( " " );
-        }
-
-        System.out.println( "Success! Everything completed successfully. Copying final .jar files now." );
-        if ( compile.contains( Compile.CRAFTBUKKIT ) && ( versionInfo.getToolsVersion() < 101 || versionInfo.getToolsVersion() > 104 ) )
-        {
-            copyJar( "CraftBukkit/target", "craftbukkit", new File( outputDir.value( options ), "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar" ) );
-        }
-        if ( compile.contains( Compile.SPIGOT ) )
-        {
-            copyJar( "Spigot/Spigot-Server/target", "spigot", new File( outputDir.value( options ), "spigot-" + versionInfo.getMinecraftVersion() + ".jar" ) );
-        }
-    }
-
-    private static boolean checkHash(File vanillaJar, VersionInfo versionInfo) throws IOException
-    {
-        String hash = Files.asByteSource( vanillaJar ).hash( HashFormat.MD5.getHash() ).toString();
-        if ( !dev && versionInfo.getMinecraftHash() != null && !hash.equals( versionInfo.getMinecraftHash() ) )
-        {
-            System.err.println( "**** Warning, Minecraft jar hash of " + hash + " does not match stored hash of " + versionInfo.getMinecraftHash() );
-            return false;
-        } else
-        {
-            System.out.println( "Found good Minecraft hash (" + hash + ")" );
-            return true;
-        }
-    }
-
-    public static final String get(String url) throws IOException
-    {
-        URLConnection con = new URL( url ).openConnection();
-        con.setConnectTimeout( 5000 );
-        con.setReadTimeout( 5000 );
-
-        InputStreamReader r = null;
-        try
-        {
-            r = new InputStreamReader( con.getInputStream() );
-
-            return CharStreams.toString( r );
-        } finally
-        {
-            if ( r != null )
-            {
-                r.close();
-            }
-        }
-    }
-
-    public static void copyJar(String path, final String jarPrefix, File outJar) throws Exception
-    {
-        File[] files = new File( path ).listFiles( new FilenameFilter()
-        {
-            @Override
-            public boolean accept(File dir, String name)
-            {
-                return name.startsWith( jarPrefix ) && name.endsWith( ".jar" );
-            }
-        } );
-
-        if ( !outJar.getParentFile().isDirectory() )
-        {
-            outJar.getParentFile().mkdirs();
-        }
-
-        for ( File file : files )
-        {
-            System.out.println( "Copying " + file.getName() + " to " + outJar.getAbsolutePath() );
-            Files.copy( file, outJar );
-            System.out.println( "  - Saved as " + outJar );
-        }
-    }
-
-    public static boolean pull(Git repo, String ref) throws Exception
-    {
-        System.out.println( "Pulling updates for " + repo.getRepository().getDirectory() );
-
-        try
-        {
-            repo.reset().setRef( "origin/master" ).setMode( ResetCommand.ResetType.HARD ).call();
-        } catch ( JGitInternalException ex )
-        {
-            System.err.println( "*** Warning, could not find origin/master ref, but continuing anyway." );
-            System.err.println( "*** If further errors occur please delete " + repo.getRepository().getDirectory().getParent() + " and retry." );
-        }
-        FetchResult result = repo.fetch().call();
-
-        System.out.println( "Successfully fetched updates!" );
-
-        repo.reset().setRef( ref ).setMode( ResetCommand.ResetType.HARD ).call();
-        if ( ref.equals( "master" ) )
-        {
-            repo.reset().setRef( "origin/master" ).setMode( ResetCommand.ResetType.HARD ).call();
-        }
-        System.out.println( "Checked out: " + ref );
-
-        // Return true if fetch changed any tracking refs.
-        return !result.getTrackingRefUpdates().isEmpty();
-    }
-
-    public static int runProcess(File workDir, String... command) throws Exception
-    {
-        if ( msysDir != null )
-        {
-            if ( "bash".equals( command[0] ) )
-            {
-                command[0] = "git-bash";
-            }
-            String[] shim = new String[]
-            {
-                "cmd.exe", "/D", "/C"
-            };
-            command = ObjectArrays.concat( shim, command, String.class );
-        }
-        return runProcess0( workDir, command );
-    }
-
-    private static int runProcess0(File workDir, String... command) throws Exception
-    {
-        Preconditions.checkArgument( workDir != null, "workDir" );
-        Preconditions.checkArgument( command != null && command.length > 0, "Invalid command" );
-
-        if ( command[0].equals( "java" ) )
-        {
-            command[0] = System.getProperty( "java.home" ) + "/bin/" + command[0];
-        }
-
-        ProcessBuilder pb = new ProcessBuilder( command );
-        pb.directory( workDir );
-        pb.environment().put( "JAVA_HOME", System.getProperty( "java.home" ) );
-        pb.environment().remove( "M2_HOME" ); // Just let maven figure this out from where it is invoked
-        if ( !pb.environment().containsKey( "MAVEN_OPTS" ) )
-        {
-            pb.environment().put( "MAVEN_OPTS", "-Xmx1024M" );
-        }
-        if ( !pb.environment().containsKey( "_JAVA_OPTIONS" ) )
-        {
-            String javaOptions = "-Djdk.net.URLClassPath.disableClassPathURLCheck=true";
-
-            for ( String arg : ManagementFactory.getRuntimeMXBean().getInputArguments() )
-            {
-                if ( arg.startsWith( "-Xmx" ) )
-                {
-                    javaOptions += " " + arg;
+            File vanillaJar = new File(workDir, "minecraft_server." + versionInfo.getMinecraftVersion() + ".jar");
+            if (!vanillaJar.exists() || !checkHash(vanillaJar, versionInfo, cfg.isDevMode)) {
+                if (versionInfo.getServerUrl() != null) {
+                    Utils.downloadFile(versionInfo.getServerUrl(), vanillaJar, HashAlgo.MD5, versionInfo.getMinecraftHash());
+                } else {
+                    Utils.downloadFile(String.format("https://s3.amazonaws.com/Minecraft.Download/versions/%1$s/minecraft_server.%1$s.jar",
+                            versionInfo.getMinecraftVersion()), vanillaJar, HashAlgo.MD5, versionInfo.getMinecraftHash());
                 }
             }
 
-            pb.environment().put( "_JAVA_OPTIONS", javaOptions );
-        }
-        if ( msysDir != null )
-        {
-            String pathEnv = null;
-            for ( String key : pb.environment().keySet() )
-            {
-                if ( key.equalsIgnoreCase( "path" ) )
-                {
-                    pathEnv = key;
+            Iterable<RevCommit> mappings = buildDataGit.log()
+                    .addPath("mappings/")
+                    .setMaxCount(1).call();
+
+            HashAlgo mappingsHash = HashAlgo.MD5;
+            for (RevCommit rev : mappings) {
+                mappingsHash.update(rev.getName().getBytes(StandardCharsets.UTF_8));
+            }
+            String mappingsVersion = mappingsHash.getHash().substring(24); // Last 8 chars
+
+            File finalMappedJar = new File(workDir, "mapped." + mappingsVersion + ".jar");
+            if (!finalMappedJar.exists()) {
+                System.out.println("Final mapped jar '" + finalMappedJar + "' does not exist, creating (please wait)!");
+
+                File clMappedJar = new File(finalMappedJar + "-cl");
+                File mMappedJar = new File(finalMappedJar + "-m");
+
+                // This cannot be run in parallel because they rely on each other, but
+                // I'm keeping this for better readability - notice the threadCount = 1
+                VersionInfo finalVersionInfo = versionInfo;
+                Utils.runTasksMultiThreaded(1, () -> {
+                            String[] args = finalVersionInfo.getClassMapCommand().split(" ");
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = cwd.toPath().relativize(vanillaJar.toPath()).toString();
+                                        break;
+                                    case "{1}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getClassMappings();
+                                        break;
+                                    case "{2}":
+                                        args[i] = cwd.toPath().relativize(clMappedJar.toPath()).toString();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
+
+                            String cmd = args[0];
+                            args[0] = null;
+
+                            Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+
+                            return 0;
+                        },
+                        () -> {
+                            String[] args = finalVersionInfo.getMemberMapCommand().split(" ");
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = cwd.toPath().relativize(clMappedJar.toPath()).toString();
+                                        break;
+                                    case "{1}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getMemberMappings();
+                                        break;
+                                    case "{2}":
+                                        args[i] = cwd.toPath().relativize(mMappedJar.toPath()).toString();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
+
+                            String cmd = args[0];
+                            args[0] = null;
+
+                            Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+
+                            return 0;
+                        },
+                        () -> {
+                            String[] args = finalVersionInfo.getFinalMapCommand().split(" ");
+                            for (int i = 0; i < args.length; ++i) {
+                                switch (args[i]) {
+                                    case "{0}":
+                                        args[i] = cwd.toPath().relativize(mMappedJar.toPath()).toString();
+                                        break;
+                                    case "{1}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getAccessTransforms();
+                                        break;
+                                    case "{2}":
+                                        args[i] = "BuildData/mappings/" + finalVersionInfo.getPackageMappings();
+                                        break;
+                                    case "{3}":
+                                        args[i] = cwd.toPath().relativize(finalMappedJar.toPath()).toString();
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
+
+                            String cmd = args[0];
+                            args[0] = null;
+
+                            Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+
+                            return 0;
+                        });
+            }
+
+            Utils.runCommand(cwd, mvnCmd, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
+                    "-DartifactId=minecraft-server", "-Dversion=" + versionInfo.getMinecraftVersion() + "-SNAPSHOT");
+
+            File decompileDir = new File(workDir, "decompile-" + mappingsVersion);
+            if (!decompileDir.exists()) {
+                Files.createDirectories(decompileDir.toPath());
+
+                File clazzDir = new File(decompileDir, "classes");
+                Utils.extractZip(finalMappedJar, clazzDir, s -> s.startsWith("net/minecraft/server"));
+
+                if (versionInfo.getDecompileCommand() == null) {
+                    versionInfo.setDecompileCommand("java -jar BuildData/bin/fernflower.jar -dgs=1 -hdc=0 -rbr=0 -asc=1 -udv=0 {0} {1}");
                 }
-            }
-            if ( pathEnv == null )
-            {
-                throw new IllegalStateException( "Could not find path variable!" );
-            }
 
-            String path = msysDir.getAbsolutePath() + ";" + new File( msysDir, "bin" ).getAbsolutePath() + ";" + pb.environment().get( pathEnv );
-            pb.environment().put( pathEnv, path );
-        }
-
-        final Process ps = pb.start();
-
-        new Thread( new StreamRedirector( ps.getInputStream(), System.out ), "System.out redirector" ).start();
-        new Thread( new StreamRedirector( ps.getErrorStream(), System.err ), "System.err redirector" ).start();
-
-        int status = ps.waitFor();
-
-        if ( status != 0 )
-        {
-            throw new RuntimeException( "Error running command, return status !=0: " + Arrays.toString( command ) );
-        }
-
-        return status;
-    }
-
-    @RequiredArgsConstructor
-    private static class StreamRedirector implements Runnable
-    {
-
-        private final InputStream in;
-        private final PrintStream out;
-
-        @Override
-        public void run()
-        {
-            BufferedReader br = new BufferedReader( new InputStreamReader( in ) );
-            try
-            {
-                String line;
-                while ( ( line = br.readLine() ) != null )
-                {
-                    out.println( line );
-                }
-            } catch ( IOException ex )
-            {
-                throw new RuntimeException( ex );
-            }
-        }
-    }
-
-    public static void unzip(File zipFile, File targetFolder) throws IOException
-    {
-        unzip( zipFile, targetFolder, null );
-    }
-
-    public static void unzip(File zipFile, File targetFolder, Predicate<String> filter) throws IOException
-    {
-        targetFolder.mkdir();
-        ZipFile zip = new ZipFile( zipFile );
-
-        try
-        {
-            for ( Enumeration<? extends ZipEntry> entries = zip.entries(); entries.hasMoreElements(); )
-            {
-                ZipEntry entry = entries.nextElement();
-
-                if ( filter != null )
-                {
-                    if ( !filter.test( entry.getName() ) )
-                    {
-                        continue;
+                String[] args = versionInfo.getDecompileCommand().split(" ");
+                for (int i = 0; i < args.length; ++i) {
+                    switch (args[i]) {
+                        case "{0}":
+                            args[i] = cwd.toPath().relativize(clazzDir.toPath()).toString();
+                            break;
+                        case "{1}":
+                            args[i] = cwd.toPath().relativize(decompileDir.toPath()).toString();
+                            break;
+                        default:
+                            break;
                     }
                 }
 
-                File outFile = new File( targetFolder, entry.getName() );
+                String cmd = args[0];
+                args[0] = null;
+                Utils.runCommand(cwd, cmd.equalsIgnoreCase("java") ? javaCmd : cmd, args);
+            }
 
-                if ( entry.isDirectory() )
-                {
-                    outFile.mkdirs();
+            try {
+                File latestLink = new File(workDir, "decompile-latest");
+                Files.deleteIfExists(latestLink.toPath());
+
+                Files.createSymbolicLink(latestLink.toPath(), decompileDir.getParentFile().toPath().relativize(decompileDir.toPath()));
+            } catch (UnsupportedOperationException | FileSystemException ex) {
+                // UnsupportedOperationException: Ignore if not possible
+                // FileSystemException: Not running as admin on Windows
+            } catch (IOException ex) {
+                System.out.println("Did not create decompile-latest link " + ex.getMessage());
+            }
+
+            System.out.println("Applying CraftBukkit Patches");
+
+            File nmsDir = Paths.get(craftBukkitGit.getRepository().getDirectory().getParentFile().getPath(), "src", "main", "java", "net").toFile();
+            if (nmsDir.exists()) {
+                System.out.println("Backing up NMS dir");
+                FileUtils.moveDirectory(nmsDir, new File(workDir, "nms.old." + System.currentTimeMillis()));
+            }
+            File patchDir = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "nms-patches");
+            for (File file : Objects.requireNonNull(patchDir.listFiles())) {
+                if (!file.getName().endsWith(".patch")) {
                     continue;
                 }
-                if ( outFile.getParentFile() != null )
-                {
-                    outFile.getParentFile().mkdirs();
-                }
 
-                InputStream is = zip.getInputStream( entry );
-                OutputStream os = new FileOutputStream( outFile );
-                try
-                {
-                    ByteStreams.copy( is, os );
-                } finally
-                {
-                    is.close();
-                    os.close();
-                }
+                String targetFile = "net/minecraft/server/" + file.getName().replace(".patch", ".java");
 
-                System.out.println( "Extracted: " + outFile );
-            }
-        } finally
-        {
-            zip.close();
-        }
-    }
+                File clean = new File(decompileDir, targetFile);
+                File t = new File(nmsDir.getParentFile(), targetFile);
+                Files.createDirectories(t.getParentFile().toPath());
 
-    public static void clone(String url, File target) throws GitAPIException, IOException
-    {
-        System.out.println( "Starting clone of " + url + " to " + target );
+                System.out.println("Patching with " + file.getName());
 
-        Git result = Git.cloneRepository().setURI( url ).setDirectory( target ).call();
+                List<String> readFile = FileUtils.readLines(file, StandardCharsets.UTF_8);
 
-        try
-        {
-            StoredConfig config = result.getRepository().getConfig();
-            config.setBoolean( "core", null, "autocrlf", autocrlf );
-            config.save();
-
-            didClone = true;
-            System.out.println( "Cloned git repository " + url + " to " + target.getAbsolutePath() + ". Current HEAD: " + commitHash( result ) );
-        } finally
-        {
-            result.close();
-        }
-    }
-
-    public static String commitHash(Git repo) throws GitAPIException
-    {
-        return Iterables.getOnlyElement( repo.log().setMaxCount( 1 ).call() ).getName();
-    }
-
-    public static File download(String url, File target, HashFormat hashFormat, String goodHash) throws IOException
-    {
-        System.out.println( "Starting download of " + url );
-
-        byte[] bytes = Resources.toByteArray( new URL( url ) );
-        String hash = hashFormat.getHash().hashBytes( bytes ).toString();
-
-        System.out.println( "Downloaded file: " + target + " with hash: " + hash );
-
-        if ( !dev && goodHash != null && !goodHash.equals( hash ) )
-        {
-            throw new IllegalStateException( "Downloaded file: " + target + " did not match expected hash: " + goodHash );
-        }
-
-        Files.write( bytes, target );
-
-        return target;
-    }
-
-    public static void disableHttpsCertificateCheck()
-    {
-        // This globally disables certificate checking
-        // http://stackoverflow.com/questions/19723415/java-overriding-function-to-disable-ssl-certificate-check
-        try
-        {
-            TrustManager[] trustAllCerts = new TrustManager[]
-            {
-                new X509TrustManager()
-                {
-                    @Override
-                    public java.security.cert.X509Certificate[] getAcceptedIssuers()
-                    {
-                        return null;
-                    }
-
-                    @Override
-                    public void checkClientTrusted(X509Certificate[] certs, String authType)
-                    {
-                    }
-
-                    @Override
-                    public void checkServerTrusted(X509Certificate[] certs, String authType)
-                    {
+                // Manually append a prelude if it is not found in the first few lines.
+                boolean preludeFound = false;
+                for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
+                    if (readFile.get(i).startsWith("+++")) {
+                        preludeFound = true;
+                        break;
                     }
                 }
-            };
-
-            // Trust SSL certs
-            SSLContext sc = SSLContext.getInstance( "SSL" );
-            sc.init( null, trustAllCerts, new SecureRandom() );
-            HttpsURLConnection.setDefaultSSLSocketFactory( sc.getSocketFactory() );
-
-            // Trust host names
-            HostnameVerifier allHostsValid = new HostnameVerifier()
-            {
-                @Override
-                public boolean verify(String hostname, SSLSession session)
-                {
-                    return true;
+                if (!preludeFound) {
+                    readFile.add(0, "+++");
                 }
-            };
-            HttpsURLConnection.setDefaultHostnameVerifier( allHostsValid );
-        } catch ( NoSuchAlgorithmException ex )
-        {
-            System.out.println( "Failed to disable https certificate check" );
-            ex.printStackTrace( System.err );
-        } catch ( KeyManagementException ex )
-        {
-            System.out.println( "Failed to disable https certificate check" );
-            ex.printStackTrace( System.err );
-        }
-    }
 
-    public static void logOutput()
-    {
-        try
-        {
-            final OutputStream logOut = new BufferedOutputStream( new FileOutputStream( LOG_FILE ) );
+                Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
+                List<?> modifiedLines = DiffUtils.patch(FileUtils.readLines(clean, StandardCharsets.UTF_8), parsedPatch);
 
-            Runtime.getRuntime().addShutdownHook( new Thread()
-            {
-                @Override
-                public void run()
-                {
-                    System.setOut( new PrintStream( new FileOutputStream( FileDescriptor.out ) ) );
-                    System.setErr( new PrintStream( new FileOutputStream( FileDescriptor.err ) ) );
-                    try
-                    {
-                        logOut.close();
-                    } catch ( IOException ex )
-                    {
-                        // We're shutting the jvm down anyway.
+                BufferedWriter bw = new BufferedWriter(new FileWriter(t));
+                for (Object line : modifiedLines) {
+                    bw.write((String) line);
+                    bw.newLine();
+                }
+                bw.close();
+            }
+            File tmpNms = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "tmp-nms");
+            FileUtils.copyDirectory(nmsDir, tmpNms);
+
+            craftBukkitGit.branchDelete().setBranchNames("patched").setForce(true).call();
+            craftBukkitGit.checkout().setCreateBranch(true).setForceRefUpdate(true).setName("patched").call();
+            craftBukkitGit.add().addFilepattern("src/main/java/net/").call();
+            craftBukkitGit.commit().setSign(false).setMessage("CraftBukkit $ " + new Date()).call();
+            craftBukkitGit.checkout().setName(buildInfo.getRefs().getCraftBukkit()).call();
+
+            FileUtils.moveDirectory(tmpNms, nmsDir);
+
+            if (versionInfo.getToolsVersion() < 93) {
+                Utils.runTasksMultiThreaded(
+                        () -> {
+                            File spigotApi = new File(spigotGit.getRepository().getDirectory().getParentFile(), "Bukkit");
+
+                            if (!spigotApi.exists()) {
+                                Utils.gitClone("file://" + bukkitGit.getRepository().getDirectory().getParentFile().getAbsolutePath(), spigotApi, Bootstrap.AUTO_CRLF);
+                            }
+
+                            return 0;
+                        },
+
+                        () -> {
+                            File spigotServer = new File(spigotGit.getRepository().getDirectory().getParentFile(), "CraftBukkit");
+
+                            if (!spigotServer.exists()) {
+                                Utils.gitClone("file://" + craftBukkitGit.getRepository().getDirectory().getParentFile().getAbsolutePath(), spigotServer, Bootstrap.AUTO_CRLF);
+                            }
+
+                            return 0;
+                        }
+                );
+            }
+
+            if (cfg.toCompile.contains(Compile.CRAFTBUKKIT)) {
+                System.out.println("Compiling Bukkit");
+                if (cfg.isDevMode) {
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-P", "development", "clean", "install");
+                } else {
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "clean", "install");
+                }
+                if (cfg.generateDoc) {
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "javadoc:jar");
+                }
+                if (cfg.generateSrc) {
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "source:jar");
+                }
+
+                System.out.println("Compiling CraftBukkit");
+                if (cfg.isDevMode) {
+                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-P", "development", "clean", "install");
+                } else {
+                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "clean", "install");
+                }
+            }
+
+            try {
+                Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), shCmd, "applyPatches.sh");
+                System.out.println("*** Spigot patches applied!");
+
+                if (cfg.toCompile.contains(Compile.SPIGOT)) {
+                    System.out.println("Compiling Spigot & Spigot-API");
+                    if (cfg.isDevMode) {
+                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-P", "development", "clean", "install");
+                    } else {
+                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "clean", "install");
                     }
                 }
-            } );
+            } catch (Exception ex) {
+                throw new BuilderException("Error compiling Spigot. Please check the wiki for FAQs.\n" +
+                        "If this does not resolve your issue then please pastebin the entire BuildTools.log.txt file when seeking support.", ex);
+            }
 
-            System.setOut( new PrintStream( new TeeOutputStream( System.out, logOut ) ) );
-            System.setErr( new PrintStream( new TeeOutputStream( System.err, logOut ) ) );
-        } catch ( FileNotFoundException ex )
-        {
-            System.err.println( "Failed to create log file: " + LOG_FILE );
+            for (int i = 0; i < 36; ++i) {
+                System.out.println();
+            }
+
+            System.out.println("Success! Everything completed successfully.");
+
+            if (!cfg.toCompile.contains(Compile.NONE)) {
+                if (cfg.toCompile.contains(Compile.CRAFTBUKKIT) && (versionInfo.getToolsVersion() < 101 || versionInfo.getToolsVersion() > 104)) {
+                    copyJar("CraftBukkit/target", "craftbukkit", new File(cfg.outputDir, "craftbukkit-" + versionInfo.getMinecraftVersion() + ".jar"));
+                }
+
+                if (cfg.toCompile.contains(Compile.SPIGOT)) {
+                    copyJar("Spigot/Spigot-Server/target", "spigot", new File(cfg.outputDir, "spigot-" + versionInfo.getMinecraftVersion() + ".jar"));
+                }
+            }
         }
     }
 
-    public enum HashFormat
-    {
-        MD5
-        {
-            @Override
-            @SuppressWarnings("deprecation")
-            public HashFunction getHash()
-            {
-                return Hashing.md5();
-            }
-        }, SHA256
-        {
-            @Override
-            public HashFunction getHash()
-            {
-                return Hashing.sha256();
-            }
-        }, SHA512
-        {
-            @Override
-            public HashFunction getHash()
-            {
-                return Hashing.sha512();
-            }
-        };
+    private boolean prepareGitInstallation(File cwd) throws IOException {
+        if (Utils.doesCommandFail(cwd, gitCmd, "--version")) {
+            if (Bootstrap.IS_WINDOWS) {
+                boolean arch64 = System.getProperty("os.arch").endsWith("64");
 
-        public abstract HashFunction getHash();
+                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
+                String gitVersion = "PortableGit-2.24.1.2-" + (arch64 ? "64" : "32") + "-bit";
+                String gitHash = arch64 ?
+                        "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
+                        "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
+
+                File gitDir = Paths.get(cwd.getPath(), gitVersion, "PortableGit").toFile();
+
+                if (!gitDir.isDirectory()) {
+                    System.out.println("*** Downloading PortableGit ***");
+
+                    String installerName = gitVersion + ".7z.exe";
+
+                    File gitInstaller = new File(gitDir.getParentFile(), installerName);
+                    gitInstaller.deleteOnExit();
+
+                    Utils.downloadFile("https://static.spigotmc.org/git/" + installerName, gitInstaller, HashAlgo.SHA256, gitHash);
+
+                    System.out.println("Extracting downloaded git installer");
+                    // yes to all, silent, don't run. Only -y seems to work.
+                    Utils.runCommand(gitInstaller.getParentFile(), gitInstaller.getAbsolutePath(), "-y", "-gm2", "-nr");
+
+                    Files.deleteIfExists(gitInstaller.toPath());
+                }
+
+                gitCmd = Paths.get(gitDir.getPath(), "bin", "git").toString();
+                shCmd = Paths.get(gitCmd, "..", "sh").toString();
+                System.out.println("*** Using PortableGit at '" + gitDir.getAbsolutePath() + "' ***");
+            }
+
+            if (Utils.doesCommandFail(cwd, gitCmd, "--version")) {
+                return false;
+            }
+        }
+
+        try {
+            Utils.runCommand(cwd, gitCmd, "config", "--global", "--includes", "user.name");
+        } catch (Exception ex) {
+            System.out.println("Git name not set, setting it to default value.");
+            Utils.runCommand(cwd, gitCmd, "config", "--global", "user.name", "SpraxDev/BuildTools");
+        }
+
+        try {
+            Utils.runCommand(cwd, gitCmd, "config", "--global", "--includes", "user.email");
+        } catch (Exception ex) {
+            System.out.println("Git email not set, setting it to default value.");
+            Utils.runCommand(cwd, gitCmd, "config", "--global", "user.email", "unconfigured@null.spigotmc.org");
+        }
+
+        return true;
     }
 
-    private static boolean containsGit(File file)
-    {
-        return new File( file, ".git" ).isDirectory();
+    private boolean prepareMavenInstallation(File cwd) throws IOException {
+        if (Utils.doesCommandFail(cwd, mvnCmd, "-B", "--version")) {
+            // https://www.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip.sha512
+            String mvnVersion = "apache-maven-3.6.0";
+            String mvnHash = "7d14ab2b713880538974aa361b987231473fbbed20e83586d542c691ace1139026f232bd46fdcce5e8887f528ab1c3fbfc1b2adec90518b6941235952d3868e9";
+
+            File mvnDir = new File(cwd, mvnVersion);
+
+            if (!mvnDir.isDirectory()) {
+                System.out.println("\n*** Downloading Maven3 ***");
+
+                File mvnZip = new File(mvnDir.getParentFile(), mvnVersion + "-bin.zip");
+                mvnZip.deleteOnExit();
+
+                Utils.downloadFile("https://static.spigotmc.org/maven/" + mvnZip.getName(), mvnZip, HashAlgo.SHA512, mvnHash);
+
+                System.out.println("Extracting downloaded maven archive");
+                Utils.extractZip(mvnZip, mvnDir.getParentFile(), null);
+
+                Files.deleteIfExists(mvnZip.toPath());
+            }
+
+            mvnCmd = Paths.get(mvnDir.getPath(), "bin", "mvn" + (Bootstrap.IS_WINDOWS ? ".cmd" : "")).toString();
+            System.out.println("*** Using Maven3 at '" + mvnDir.getAbsolutePath() + "' ***");
+
+            return !Utils.doesCommandFail(cwd, mvnCmd, "-B", "--version");
+        }
+
+        return true;
+    }
+
+    private void copyJar(@NotNull String path, @NotNull String jarPrefix, @NotNull File outJar) throws IOException {
+        File[] files = new File(cwd, path).listFiles((dir, name) -> name.startsWith(jarPrefix) && name.endsWith(".jar"));
+
+        Files.createDirectories(outJar.getParentFile().toPath());
+
+        for (File file : Objects.requireNonNull(files)) {
+            Files.copy(file.toPath(), outJar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            System.out.println(file.getName() + "\n  - Saved as " + outJar.getAbsolutePath());
+        }
+    }
+
+    private static boolean checkHash(File vanillaJar, VersionInfo versionInfo, boolean dev) throws IOException {
+        String hash = HashAlgo.MD5.getHash(FileUtils.readFileToByteArray(vanillaJar));
+
+        if (dev || versionInfo.getMinecraftHash() == null || hash.equalsIgnoreCase(versionInfo.getMinecraftHash())) {
+            System.out.println("Found good Minecraft hash (" + hash + ")");
+            return true;
+        } else {
+            System.err.println("**** Warning, Minecraft jar hash of '" + hash + "' does not match stored hash: '" + versionInfo.getMinecraftHash() + "'");
+        }
+
+        return false;
+    }
+
+    public static class BuilderConfiguration {
+        public final boolean skipUpdate;
+        public final boolean exitAfterFetch;
+        public final boolean generateSrc;
+        public final boolean generateDoc;
+        public final boolean isDevMode;
+        public final boolean disableJavaCheck;
+        public final boolean onlyCompileOnChange;
+        public final boolean hasJenkinsVersion;
+
+        public final @NotNull String jenkinsVersion;
+        public final @NotNull List<Compile> toCompile;
+        public final @NotNull File outputDir;
+
+        public BuilderConfiguration(boolean skipUpdate, boolean exitAfterFetch, boolean generateSrc, boolean generateDoc, boolean isDevMode,
+                                    boolean disableJavaCheck, boolean onlyCompileOnChange, boolean hasJenkinsVersion,
+                                    @NotNull String jenkinsVersion, @NotNull List<Compile> toCompile, @NotNull File outputDir) {
+            this.skipUpdate = skipUpdate;
+            this.exitAfterFetch = exitAfterFetch;
+            this.generateSrc = generateSrc;
+            this.generateDoc = generateDoc;
+            this.isDevMode = isDevMode;
+            this.disableJavaCheck = disableJavaCheck;
+            this.onlyCompileOnChange = onlyCompileOnChange;
+            this.hasJenkinsVersion = hasJenkinsVersion;
+
+            this.jenkinsVersion = jenkinsVersion;
+            this.toCompile = toCompile;
+            this.outputDir = outputDir;
+        }
     }
 }
