@@ -286,7 +286,7 @@ public class Builder {
                         });
             }
 
-            Utils.runCommand(cwd, mvnCmd, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
+            Utils.runCommand(cwd, mvnCmd, "-B", "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
                     "-DartifactId=minecraft-server", "-Dversion=" + versionInfo.getMinecraftVersion() + "-SNAPSHOT");
 
             File decompileDir = new File(workDir, "decompile-" + mappingsVersion);
@@ -414,22 +414,22 @@ public class Builder {
             if (cfg.toCompile.contains(Compile.CRAFTBUKKIT)) {
                 System.out.println("Compiling Bukkit");
                 if (cfg.isDevMode) {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-P", "development", "clean", "install");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-P", "development", "clean", "install");
                 } else {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "clean", "install");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "clean", "install");
                 }
                 if (cfg.generateDoc) {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "javadoc:jar");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "javadoc:jar");
                 }
                 if (cfg.generateSrc) {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "source:jar");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "source:jar");
                 }
 
                 System.out.println("Compiling CraftBukkit");
                 if (cfg.isDevMode) {
-                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-P", "development", "clean", "install");
+                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-P", "development", "clean", "install");
                 } else {
-                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "clean", "install");
+                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "clean", "install");
                 }
             }
 
@@ -440,9 +440,9 @@ public class Builder {
                 if (cfg.toCompile.contains(Compile.SPIGOT)) {
                     System.out.println("Compiling Spigot & Spigot-API");
                     if (cfg.isDevMode) {
-                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-P", "development", "clean", "install");
+                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-P", "development", "clean", "install");
                     } else {
-                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "clean", "install");
+                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "clean", "install");
                     }
                 }
             } catch (Exception ex) {

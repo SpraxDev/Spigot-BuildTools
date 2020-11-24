@@ -7,13 +7,14 @@ import joptsimple.util.EnumConverter;
 import org.apache.commons.io.output.TeeOutputStream;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
@@ -193,8 +194,8 @@ public class Bootstrap {
         }
     }
 
-    private static void startLogFile() throws FileNotFoundException {
-        BufferedOutputStream fileOut = new BufferedOutputStream(new FileOutputStream(Bootstrap.LOG_FILE));
+    private static void startLogFile() throws FileNotFoundException, UnsupportedEncodingException {
+        FileOutputStream fileOut = new FileOutputStream(Bootstrap.LOG_FILE);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));
@@ -207,7 +208,7 @@ public class Bootstrap {
             }
         }));
 
-        System.setOut(new PrintStream(new TeeOutputStream(System.out, fileOut)));
-        System.setErr(new PrintStream(new TeeOutputStream(System.err, fileOut)));
+        System.setOut(new PrintStream(new TeeOutputStream(System.out, fileOut), false, StandardCharsets.UTF_8.displayName()));
+        System.setErr(new PrintStream(new TeeOutputStream(System.err, fileOut), false, StandardCharsets.UTF_8.displayName()));
     }
 }
