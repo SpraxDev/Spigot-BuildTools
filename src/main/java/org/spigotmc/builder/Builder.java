@@ -29,7 +29,7 @@ public class Builder {
 
     private String gitCmd = "git";
     private String mvnCmd = "mvn";
-    private String shCmd = "sh";
+    private String bashCmd = "bash";
     private final String javaCmd = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().normalize().toString();
 
     public Builder(File cwd, BuilderConfiguration cfg) {
@@ -53,8 +53,8 @@ public class Builder {
             throw new BuilderException("Could not run 'mvn' - Please install Maven3 on your machine");
         }
 
-        if (Utils.doesCommandFail(cwd, shCmd, "-c", "exit")) {
-            throw new BuilderException("Could not run '" + shCmd + "' - Please make sure it is available on your machine");
+        if (Utils.doesCommandFail(cwd, bashCmd, "-c", "exit")) {
+            throw new BuilderException("Could not run '" + bashCmd + "' - Please make sure it is available on your machine");
         }
 
         System.out.println();
@@ -434,7 +434,7 @@ public class Builder {
             }
 
             try {
-                Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), shCmd, "applyPatches.sh");
+                Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), bashCmd, "applyPatches.sh");
                 System.out.println("*** Spigot patches applied!");
 
                 if (cfg.toCompile.contains(Compile.SPIGOT)) {
@@ -499,7 +499,7 @@ public class Builder {
                 }
 
                 gitCmd = Paths.get(gitDir.getPath(), "bin", "git").toString();
-                shCmd = Paths.get(gitCmd, "..", "sh").toString();
+                bashCmd = Paths.get(gitCmd, "..", "bash").toString();
                 System.out.println("*** Using PortableGit at '" + gitDir.getAbsolutePath() + "' ***");
             }
 
