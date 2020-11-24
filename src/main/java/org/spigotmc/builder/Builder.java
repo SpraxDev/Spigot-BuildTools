@@ -369,12 +369,12 @@ public class Builder {
                 Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
                 List<?> modifiedLines = DiffUtils.patch(FileUtils.readLines(clean, StandardCharsets.UTF_8), parsedPatch);
 
-                BufferedWriter bw = new BufferedWriter(new FileWriter(t));
-                for (Object line : modifiedLines) {
-                    bw.write((String) line);
-                    bw.newLine();
+                try (BufferedWriter bw = new BufferedWriter(new FileWriter(t))) {
+                    for (Object line : modifiedLines) {
+                        bw.write((String) line);
+                        bw.newLine();
+                    }
                 }
-                bw.close();
             }
             File tmpNms = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "tmp-nms");
             FileUtils.copyDirectory(nmsDir, tmpNms);
