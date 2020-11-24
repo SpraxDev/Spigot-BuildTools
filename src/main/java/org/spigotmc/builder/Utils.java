@@ -37,7 +37,6 @@ import java.security.cert.X509Certificate;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -61,8 +60,8 @@ public class Utils {
     }
 
     public static void downloadFile(@NotNull String url, @NotNull File dest, @Nullable HashAlgo hashAlgo, @Nullable String goodHash) throws IOException {
-        if (hashAlgo != null) {
-            Objects.requireNonNull(goodHash);
+        if (hashAlgo != null && goodHash == null) {
+            hashAlgo = null;
         }
 
         System.out.println("Downloading '" + url + "' to '" + dest.toString() + "'...");
