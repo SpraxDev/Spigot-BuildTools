@@ -43,17 +43,17 @@ It is recommended to check for a new release every couple weeks.
 
 Open your Terminal (or *cmd.exe*) and type `java -jar BuildTools.jar`
 
-|                     Argument                    |               Description               |
-| :---------------------------------------------: | :-------------------------------------: |
-| `--help`, `-?`                                  | Show the help                           |
-| `--disable-certificate-check`                   | Disable HTTPS certificate check         |
-| `--disable-java-check`                          | Disable Java version check              |
-| `--skip-update`                                 | Don't pull updates from Git             |
-| `--exit-after-fetch`                            | Everything *--rev*  unrelated is downloaded (No de-/compiling) |
-| `--generate-src`                                | Generate source jar                     |
-| `--generate-doc`                                | Generate Javadoc jar                    |
-| `--dev`                                         | Development mode                        |
-| `--o <Path>`, `--output-dir <Path>`             | Final jar output directory (defaults to current directory) |
-| `--rev <Version>`                               | Version to build (defaults to `latest`) |
-| `--compile <[None,CraftBukkit,Spigot]>`         | Comma separated list of software to compile (defaults to `Spigot`) |
-| `compile-if-changed`, `only-compile-on-changed` | Run BuildTools only when changes are detected in the repository |
+|                       Argument                      |               Description               |
+| :-------------------------------------------------: | :-------------------------------------: |
+| `--help`, `-?`                                      | Show the help                           |
+| `--disable-certificate-check`                       | Disable HTTPS certificate check         |
+| `--disable-java-check`                              | Disable Java version check              |
+| `--skip-update`                                     | Don't pull updates from Git             |
+| `--exit-after-fetch`                                | Everything *--rev*  unrelated is downloaded (No de-/compiling) |
+| `--generate-src`                                    | Generate source jar                     |
+| `--generate-doc`                                    | Generate Javadoc jar                    |
+| `--dev`                                             | Development mode                        |
+| `--o <Path>`, `--output-dir <Path>`                 | Final jar output directory (defaults to current directory) |
+| `--rev <Version>`                                   | Version to build (defaults to `latest`) |
+| `--compile <[None,CraftBukkit,Spigot]>`             | Comma separated list of software to compile (defaults to `Spigot`) |
+| `--only-compile-on-changed`, `--compile-if-changed` | Run BuildTools only when changes are detected in the repository |
