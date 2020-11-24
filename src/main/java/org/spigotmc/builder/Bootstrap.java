@@ -70,6 +70,7 @@ public class Bootstrap {
 
         // Print help and exit
         if (options.has(helpFlag)) {
+            printToolVersion();
             optionParser.printHelpOn(System.out);
 
             System.exit(0);
@@ -109,14 +110,7 @@ public class Bootstrap {
             }
         }
 
-        System.out.println("Running BuildTools '" + getBuildVersion() + "' (#" + getBuildNumber(getBuildVersion()) +
-                " - Based on #" + ORIGINAL_BUILD_NUMBER + ")");
-        System.out.println("Java Version: " + JavaVersion.getCurrentVersion() + " (" +
-                System.getProperty("java.version", "Unknown Version") + ", " +
-                System.getProperty("java.vendor", "Unknown Vendor") + ", " +
-                System.getProperty("os.arch", "Unknown architecture") + ")");
-        System.out.println("Working Directory: '" + CWD.getAbsolutePath() + "'");
-        System.out.println();
+        printToolVersion();
 
         /* Start Builder */
 
@@ -146,6 +140,17 @@ public class Bootstrap {
         final long buildEnd = System.nanoTime();
         System.out.println("Finished in " + new DecimalFormat("#0.00", DecimalFormatSymbols.getInstance(Locale.ENGLISH))
                 .format(TimeUnit.NANOSECONDS.toMillis(buildEnd - buildStart) / 1000.0) + " seconds");
+    }
+
+    private static void printToolVersion() {
+        System.out.println("Running BuildTools '" + getBuildVersion() + "' (#" + getBuildNumber(getBuildVersion()) +
+                " - Based on #" + ORIGINAL_BUILD_NUMBER + ")");
+        System.out.println("Java Version: " + JavaVersion.getCurrentVersion() + " (" +
+                System.getProperty("java.version", "Unknown Version") + ", " +
+                System.getProperty("java.vendor", "Unknown Vendor") + ", " +
+                System.getProperty("os.arch", "Unknown architecture") + ")");
+        System.out.println("Working Directory: '" + CWD.getAbsolutePath() + "'");
+        System.out.println();
     }
 
     @Nullable
