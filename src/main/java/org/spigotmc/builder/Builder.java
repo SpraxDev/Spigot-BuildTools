@@ -191,9 +191,9 @@ public class Builder
         {
             if ( IS_WINDOWS )
             {
-                String gitVersion = "PortableGit-2.24.1.2-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
-                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
-                String gitHash = System.getProperty( "os.arch" ).endsWith( "64" ) ? "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" : "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
+                String gitVersion = "PortableGit-2.30.0-" + ( System.getProperty( "os.arch" ).endsWith( "64" ) ? "64" : "32" ) + "-bit";
+                // https://github.com/git-for-windows/git/releases/tag/v2.30.0.windows.1
+                String gitHash = System.getProperty( "os.arch" ).endsWith( "64" ) ? "6497e30fc6141e3c27af6cc3a081861043a7666dd54f395d47184e8eb75f5d61" : "b3768c64b6afa082043659c56acb4c3483df6b6e884fdc7e3c769f7e7e99a3a8";
                 msysDir = new File( gitVersion, "PortableGit" );
 
                 if ( !msysDir.isDirectory() )
@@ -207,7 +207,7 @@ public class Builder
 
                     if ( !gitInstall.exists() )
                     {
-                        download( "https://static.spigotmc.org/git/" + gitName, gitInstall, HashFormat.SHA256, gitHash );
+                        download( "https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.1/" + gitName, gitInstall, HashFormat.SHA256, gitHash );
                     }
 
                     System.out.println( "Extracting downloaded git install" );
@@ -724,9 +724,9 @@ public class Builder
     {
         List<String> args = new LinkedList<String>();
 
-        if ( IS_WINDOWS && false )
+        if ( IS_WINDOWS )
         {
-            // TODO: BUILDTOOLS-561
+            args.add( maven.getAbsolutePath() + "/bin/mvn.cmd" );
         } else
         {
             args.add( "sh" );
