@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.zip.ZipEntry;
@@ -85,7 +86,10 @@ public class Builder
     private static String applyPatchesShell = "sh";
     private static boolean didClone = false;
     //
+    private static BuildInfo buildInfo = new BuildInfo( "dev", "Development", 0, null, new BuildInfo.Refs( "master", "master", "master", "master" ) );
+    //
     private static File msysDir;
+    private static File maven;
 
     public static void main(String[] args) throws Exception
     {
@@ -275,7 +279,6 @@ public class Builder
             clone( "https://hub.spigotmc.org/stash/scm/spigot/builddata.git", buildData );
         }
 
-        File maven;
         String m2Home = System.getenv( "M2_HOME" );
         if ( m2Home == null || !( maven = new File( m2Home ) ).exists() )
         {
@@ -296,14 +299,10 @@ public class Builder
             }
         }
 
-        String mvn = maven.getAbsolutePath() + "/bin/mvn";
-
         Git bukkitGit = Git.open( bukkit );
         Git craftBukkitGit = Git.open( craftBukkit );
         Git spigotGit = Git.open( spigot );
         Git buildGit = Git.open( buildData );
-
-        BuildInfo buildInfo = new BuildInfo( "Dev Build", "Development", 0, null, new BuildInfo.Refs( "master", "master", "master", "master" ) );
 
         if ( !dontUpdate )
         {
@@ -453,7 +452,7 @@ public class Builder
                     "BuildData/mappings/" + versionInfo.getPackageMappings(), finalMappedJar.getPath() ).split( " " ) );
         }
 
-        runProcess( CWD, "sh", mvn, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
+        runMaven( CWD, "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
                 "-DartifactId=minecraft-server", "-Dversion=" + versionInfo.getMinecraftVersion() + "-SNAPSHOT" );
 
         File decompileDir = new File( workDir, "decompile-" + mappingsVersion );
@@ -587,30 +586,18 @@ public class Builder
         if ( compile.contains( Compile.CRAFTBUKKIT ) )
         {
             System.out.println( "Compiling Bukkit" );
-            if ( dev )
-            {
-                runProcess( bukkit, "sh", mvn, "-P", "development", "clean", "install" );
-            } else
-            {
-                runProcess( bukkit, "sh", mvn, "clean", "install" );
-            }
+            runMaven( bukkit, "clean", "install" );
             if ( generateDocs )
             {
-                runProcess( bukkit, "sh", mvn, "javadoc:jar" );
+                runMaven( bukkit, "javadoc:jar" );
             }
             if ( generateSource )
             {
-                runProcess( bukkit, "sh", mvn, "source:jar" );
+                runMaven( bukkit, "source:jar" );
             }
 
             System.out.println( "Compiling CraftBukkit" );
-            if ( dev )
-            {
-                runProcess( craftBukkit, "sh", mvn, "-P", "development", "clean", "install" );
-            } else
-            {
-                runProcess( craftBukkit, "sh", mvn, "clean", "install" );
-            }
+            runMaven( craftBukkit, "clean", "install" );
         }
 
         try
@@ -621,13 +608,7 @@ public class Builder
             if ( compile.contains( Compile.SPIGOT ) )
             {
                 System.out.println( "Compiling Spigot & Spigot-API" );
-                if ( dev )
-                {
-                    runProcess( spigot, "sh", mvn, "-P", "development", "clean", "install" );
-                } else
-                {
-                    runProcess( spigot, "sh", mvn, "clean", "install" );
-                }
+                runMaven( spigot, "clean", "install" );
             }
         } catch ( Exception ex )
         {
@@ -737,6 +718,32 @@ public class Builder
 
         // Return true if fetch changed any tracking refs.
         return !result.getTrackingRefUpdates().isEmpty();
+    }
+
+    public static int runMaven(File workDir, String... command) throws Exception
+    {
+        List<String> args = new LinkedList<String>();
+
+        if ( IS_WINDOWS && false )
+        {
+            // TODO: BUILDTOOLS-561
+        } else
+        {
+            args.add( "sh" );
+            args.add( maven.getAbsolutePath() + "/bin/mvn" );
+        }
+
+        args.add( "-Dbt.name=" + buildInfo.getName() );
+
+        if ( dev )
+        {
+            args.add( "-P" );
+            args.add( "development" );
+        }
+
+        args.addAll( Arrays.asList( command ) );
+
+        return runProcess( workDir, args.toArray( new String[ args.size() ] ) );
     }
 
     public static int runProcess(File workDir, String... command) throws Exception
