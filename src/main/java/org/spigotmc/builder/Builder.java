@@ -34,6 +34,7 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.file.FileSystemException;
+import java.nio.file.Path;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -467,7 +468,7 @@ public class Builder
                 @Override
                 public boolean test(String input)
                 {
-                    return input.startsWith( "net/minecraft/server" );
+                    return input.startsWith( "net/minecraft" );
                 }
             } );
             if ( versionInfo.getDecompileCommand() == null )
@@ -502,50 +503,58 @@ public class Builder
             System.out.println( "Backing up NMS dir" );
             FileUtils.moveDirectory( nmsDir, new File( workDir, "nms.old." + System.currentTimeMillis() ) );
         }
-        File patchDir = new File( craftBukkit, "nms-patches" );
-        for ( File file : patchDir.listFiles() )
+        Path patchDir = new File( craftBukkit, "nms-patches" ).toPath();
+        java.nio.file.Files.walk( patchDir ).filter( java.nio.file.Files::isRegularFile ).forEach( (path) ->
         {
+            File file = path.toFile();
             if ( !file.getName().endsWith( ".patch" ) )
             {
-                continue;
+                return;
             }
 
-            String targetFile = "net/minecraft/server/" + file.getName().replace( ".patch", ".java" );
+            String relativeName = patchDir.relativize( path ).toString().replace( ".patch", ".java" );
+            String targetFile = ( relativeName.contains( File.separator ) ) ? relativeName : "net/minecraft/server/" + relativeName;
 
             File clean = new File( decompileDir, targetFile );
             File t = new File( nmsDir.getParentFile(), targetFile );
             t.getParentFile().mkdirs();
 
-            System.out.println( "Patching with " + file.getName() );
+            System.out.println( "Patching " + relativeName );
 
-            List<String> readFile = Files.readLines( file, Charsets.UTF_8 );
-
-            // Manually append prelude if it is not found in the first few lines.
-            boolean preludeFound = false;
-            for ( int i = 0; i < Math.min( 3, readFile.size() ); i++ )
+            try
             {
-                if ( readFile.get( i ).startsWith( "+++" ) )
+                List<String> readFile = Files.readLines( file, Charsets.UTF_8 );
+
+                // Manually append prelude if it is not found in the first few lines.
+                boolean preludeFound = false;
+                for ( int i = 0; i < Math.min( 3, readFile.size() ); i++ )
                 {
-                    preludeFound = true;
-                    break;
+                    if ( readFile.get( i ).startsWith( "+++" ) )
+                    {
+                        preludeFound = true;
+                        break;
+                    }
                 }
-            }
-            if ( !preludeFound )
-            {
-                readFile.add( 0, "+++" );
-            }
+                if ( !preludeFound )
+                {
+                    readFile.add( 0, "+++" );
+                }
 
-            Patch parsedPatch = DiffUtils.parseUnifiedDiff( readFile );
-            List<?> modifiedLines = DiffUtils.patch( Files.readLines( clean, Charsets.UTF_8 ), parsedPatch );
+                Patch parsedPatch = DiffUtils.parseUnifiedDiff( readFile );
+                List<?> modifiedLines = DiffUtils.patch( Files.readLines( clean, Charsets.UTF_8 ), parsedPatch );
 
-            BufferedWriter bw = new BufferedWriter( new FileWriter( t ) );
-            for ( Object line : modifiedLines )
+                BufferedWriter bw = new BufferedWriter( new FileWriter( t ) );
+                for ( Object line : modifiedLines )
+                {
+                    bw.write( (String) line );
+                    bw.newLine();
+                }
+                bw.close();
+            } catch ( Exception ex )
             {
-                bw.write( (String) line );
-                bw.newLine();
+                throw new RuntimeException( "Error patching " + relativeName, ex );
             }
-            bw.close();
-        }
+        } );
         File tmpNms = new File( craftBukkit, "tmp-nms" );
         FileUtils.copyDirectory( nmsDir, tmpNms );
 

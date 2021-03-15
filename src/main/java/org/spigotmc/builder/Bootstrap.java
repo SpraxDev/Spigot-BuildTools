@@ -9,13 +9,6 @@ public class Bootstrap
     {
         JavaVersion javaVersion = JavaVersion.getCurrentVersion();
 
-        if ( javaVersion.getVersion() < JavaVersion.JAVA_8.getVersion() )
-        {
-            System.err.println( "Outdated Java detected (" + javaVersion + "). BuildTools requires at least Java 8. Please update Java and try again." );
-            System.err.println( "You may use java -version to double check your Java version." );
-            System.exit( 1 );
-        }
-
         if ( javaVersion.isUnknown() )
         {
             System.err.println( "*** WARNING *** Unsupported Java detected (" + System.getProperty( "java.class.version" ) + "). BuildTools has only been tested up to Java 15. Use of development Java versions is not supported." );
