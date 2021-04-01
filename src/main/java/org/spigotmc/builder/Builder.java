@@ -23,6 +23,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 public class Builder {
     private final File cwd;
@@ -342,54 +344,62 @@ public class Builder {
                 FileUtils.moveDirectory(nmsDir, new File(workDir, "nms.old." + System.currentTimeMillis()));
             }
             Path patchDir = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "nms-patches").toPath();
-            Files.walk(patchDir)
-                    .filter(Files::isRegularFile)
-                    .forEach(path -> {
-                        if (!path.getFileName().endsWith(".patch")) {
-                            return;
+            try (Stream<Path> stream = Files.walk(patchDir);
+                 Stream<Path> files = stream.filter(Files::isRegularFile)) {
+                AtomicReference<Exception> exception = new AtomicReference<>();
+
+                files.forEach(path -> {
+                    if (!path.getFileName().endsWith(".patch")) {
+                        return;
+                    }
+
+                    String relativeName = patchDir.relativize(path).toString().replace(".patch", ".java");
+                    String targetFile = (relativeName.contains(File.separator)) ? relativeName : "net/minecraft/server/" + relativeName;
+
+                    File clean = new File(decompileDir, targetFile);
+                    File t = new File(nmsDir.getParentFile(), targetFile);
+                    try {
+                        Files.createDirectories(t.getParentFile().toPath());
+                    } catch (IOException ex) {
+                        exception.set(ex);
+                        return;
+                    }
+
+                    System.out.println("Patching " + relativeName);
+
+                    try {
+                        List<String> readFile = Files.readAllLines(path, StandardCharsets.UTF_8);
+
+                        // Manually append prelude if it is not found in the first few lines.
+                        boolean preludeFound = false;
+                        for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
+                            if (readFile.get(i).startsWith("+++")) {
+                                preludeFound = true;
+                                break;
+                            }
+                        }
+                        if (!preludeFound) {
+                            readFile.add(0, "+++");
                         }
 
-                        String relativeName = patchDir.relativize(path).toString().replace(".patch", ".java");
-                        String targetFile = (relativeName.contains(File.separator)) ? relativeName : "net/minecraft/server/" + relativeName;
+                        Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
+                        List<?> modifiedLines = DiffUtils.patch(Files.readAllLines(clean.toPath(), StandardCharsets.UTF_8), parsedPatch);
 
-                        File clean = new File(decompileDir, targetFile);
-                        File t = new File(nmsDir.getParentFile(), targetFile);
-                        try {
-                            Files.createDirectories(t.getParentFile().toPath());
-                        } catch (IOException ex) {
-                            ex.printStackTrace();   // TODO: Exception should be thrown by the outer method #runBuild()
+                        BufferedWriter bw = new BufferedWriter(new FileWriter(t));
+                        for (Object line : modifiedLines) {
+                            bw.write((String) line);
+                            bw.newLine();
                         }
+                        bw.close();
+                    } catch (Exception ex) {
+                        throw new RuntimeException("Error patching " + relativeName, ex);
+                    }
+                });
 
-                        System.out.println("Patching " + relativeName);
-
-                        try {
-                            List<String> readFile = Files.readAllLines(path, StandardCharsets.UTF_8);
-
-                            // Manually append prelude if it is not found in the first few lines.
-                            boolean preludeFound = false;
-                            for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
-                                if (readFile.get(i).startsWith("+++")) {
-                                    preludeFound = true;
-                                    break;
-                                }
-                            }
-                            if (!preludeFound) {
-                                readFile.add(0, "+++");
-                            }
-
-                            Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
-                            List<?> modifiedLines = DiffUtils.patch(Files.readAllLines(clean.toPath(), StandardCharsets.UTF_8), parsedPatch);
-
-                            BufferedWriter bw = new BufferedWriter(new FileWriter(t));
-                            for (Object line : modifiedLines) {
-                                bw.write((String) line);
-                                bw.newLine();
-                            }
-                            bw.close();
-                        } catch (Exception ex) {
-                            throw new RuntimeException("Error patching " + relativeName, ex);
-                        }
-                    });
+                if (exception.get() != null) {
+                    throw exception.get();
+                }
+            }
 
             File tmpNms = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "tmp-nms");
             FileUtils.copyDirectory(nmsDir, tmpNms);
