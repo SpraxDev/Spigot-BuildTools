@@ -17,14 +17,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 
 public class Builder {
     private final File cwd;
@@ -343,61 +340,42 @@ public class Builder {
                 System.out.println("Backing up NMS dir");
                 FileUtils.moveDirectory(nmsDir, new File(workDir, "nms.old." + System.currentTimeMillis()));
             }
-            Path patchDir = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "nms-patches").toPath();
-            try (Stream<Path> stream = Files.walk(patchDir);
-                 Stream<Path> files = stream.filter(Files::isRegularFile)) {
-                AtomicReference<Exception> exception = new AtomicReference<>();
+            File patchDir = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "nms-patches");
+            for (File file : Objects.requireNonNull(patchDir.listFiles())) {
+                if (!file.getName().endsWith(".patch")) {
+                    continue;
+                }
 
-                files.forEach(path -> {
-                    if (!path.getFileName().endsWith(".patch")) {
-                        return;
+                String targetFile = "net/minecraft/server/" + file.getName().replace(".patch", ".java");
+
+                File clean = new File(decompileDir, targetFile);
+                File t = new File(nmsDir.getParentFile(), targetFile);
+                Files.createDirectories(t.getParentFile().toPath());
+
+                System.out.println("Patching with " + file.getName());
+
+                List<String> readFile = FileUtils.readLines(file, StandardCharsets.UTF_8);
+
+                // Manually append a prelude if it is not found in the first few lines.
+                boolean preludeFound = false;
+                for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
+                    if (readFile.get(i).startsWith("+++")) {
+                        preludeFound = true;
+                        break;
                     }
+                }
+                if (!preludeFound) {
+                    readFile.add(0, "+++");
+                }
 
-                    String relativeName = patchDir.relativize(path).toString().replace(".patch", ".java");
-                    String targetFile = (relativeName.contains(File.separator)) ? relativeName : "net/minecraft/server/" + relativeName;
+                Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
+                List<?> modifiedLines = DiffUtils.patch(FileUtils.readLines(clean, StandardCharsets.UTF_8), parsedPatch);
 
-                    File clean = new File(decompileDir, targetFile);
-                    File t = new File(nmsDir.getParentFile(), targetFile);
-                    try {
-                        Files.createDirectories(t.getParentFile().toPath());
-                    } catch (IOException ex) {
-                        exception.set(ex);
-                        return;
+                try (BufferedWriter bw = new BufferedWriter(new FileWriter(t))) {
+                    for (Object line : modifiedLines) {
+                        bw.write((String) line);
+                        bw.newLine();
                     }
-
-                    System.out.println("Patching " + relativeName);
-
-                    try {
-                        List<String> readFile = Files.readAllLines(path, StandardCharsets.UTF_8);
-
-                        // Manually append prelude if it is not found in the first few lines.
-                        boolean preludeFound = false;
-                        for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
-                            if (readFile.get(i).startsWith("+++")) {
-                                preludeFound = true;
-                                break;
-                            }
-                        }
-                        if (!preludeFound) {
-                            readFile.add(0, "+++");
-                        }
-
-                        Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
-                        List<?> modifiedLines = DiffUtils.patch(Files.readAllLines(clean.toPath(), StandardCharsets.UTF_8), parsedPatch);
-
-                        BufferedWriter bw = new BufferedWriter(new FileWriter(t));
-                        for (Object line : modifiedLines) {
-                            bw.write((String) line);
-                            bw.newLine();
-                        }
-                        bw.close();
-                    } catch (Exception ex) {
-                        throw new RuntimeException("Error patching " + relativeName, ex);
-                    }
-                });
-
-                if (exception.get() != null) {
-                    throw exception.get();
                 }
             }
 
