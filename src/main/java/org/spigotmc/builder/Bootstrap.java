@@ -29,7 +29,7 @@ public class Bootstrap {
      * This field holds the compatibility information
      * When the original project updates, this field has to be updated too!
      */
-    public static final int ORIGINAL_BUILD_NUMBER = getBuildNumber("git-BuildTools-7fe9375-122");
+    public static final int ORIGINAL_BUILD_NUMBER = getBuildNumber("git-BuildTools-36c11e9-126");
 
     public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
     public static final boolean AUTO_CRLF = !"\n".equals(System.getProperty("line.separator"));
@@ -176,14 +176,9 @@ public class Bootstrap {
     private static void checkJVM() {
         JavaVersion javaVersion = JavaVersion.getCurrentVersion();
 
-        if (javaVersion.getVersion() < JavaVersion.JAVA_8.getVersion()) {
-            System.err.println("Outdated Java detected (" + javaVersion + "). BuildTools requires at least Java 8. Please update Java and try again.");
-            System.err.println("You may use java -version to double check your Java version.");
-
-            System.exit(1);
-        } else if (javaVersion.isUnknown()) {
+        if (javaVersion.isUnknown()) {
             System.err.println("*** WARNING *** Unsupported Java detected (" + System.getProperty("java.class.version") +
-                    "). BuildTools has only been tested up to Java 15. Use of development Java versions is not supported.");
+                    "). BuildTools has only been tested up to Java 16. Use of development Java versions is not supported.");
             System.err.println("*** WARNING *** You may use 'java -version' to double check your Java version.");
         } else {
             // Older JVMs (including Java 8) report less than Xmx here. Allow some slack for people actually using -Xmx512M

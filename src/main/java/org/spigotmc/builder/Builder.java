@@ -17,11 +17,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 public class Builder {
     private final File cwd;
@@ -31,6 +34,9 @@ public class Builder {
     private String mvnCmd = "mvn";
     private String bashCmd = "bash";
     private final String javaCmd = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().normalize().toString();
+
+    private BuildInfo buildInfo = new BuildInfo("dev", "Development", 0,
+            null, new BuildInfo.Refs("master", "master", "master", "master"));
 
     public Builder(File cwd, BuilderConfiguration cfg) {
         this.cwd = cwd;
@@ -85,8 +91,6 @@ public class Builder {
              Git craftBukkitGit = Git.open(new File(cwd, GitRepository.CRAFT_BUKKIT.repoName));
              Git spigotGit = Git.open(new File(cwd, GitRepository.SPIGOT.repoName));
              Git buildDataGit = Git.open(new File(cwd, GitRepository.BUILD_DATA.repoName))) {
-            BuildInfo buildInfo = new BuildInfo("Dev Build", "Development", 0, null,
-                    new BuildInfo.Refs("master", "master", "master", "master"));
 
             if (!cfg.skipUpdate) {
                 if (!cfg.isDevMode) {
@@ -286,7 +290,8 @@ public class Builder {
                         });
             }
 
-            Utils.runCommand(cwd, mvnCmd, "-B", "install:install-file", "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
+            Utils.runCommand(cwd, mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "install:install-file",
+                    "-Dfile=" + finalMappedJar, "-Dpackaging=jar", "-DgroupId=org.spigotmc",
                     "-DartifactId=minecraft-server", "-Dversion=" + versionInfo.getMinecraftVersion() + "-SNAPSHOT");
 
             File decompileDir = new File(workDir, "decompile-" + mappingsVersion);
@@ -294,7 +299,7 @@ public class Builder {
                 Files.createDirectories(decompileDir.toPath());
 
                 File clazzDir = new File(decompileDir, "classes");
-                Utils.extractZip(finalMappedJar, clazzDir, s -> s.startsWith("net/minecraft/server"));
+                Utils.extractZip(finalMappedJar, clazzDir, s -> s.startsWith("net/minecraft"));
 
                 if (versionInfo.getDecompileCommand() == null) {
                     versionInfo.setDecompileCommand("java -jar BuildData/bin/fernflower.jar -dgs=1 -hdc=0 -rbr=0 -asc=1 -udv=0 {0} {1}");
@@ -338,44 +343,64 @@ public class Builder {
                 System.out.println("Backing up NMS dir");
                 FileUtils.moveDirectory(nmsDir, new File(workDir, "nms.old." + System.currentTimeMillis()));
             }
-            File patchDir = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "nms-patches");
-            for (File file : Objects.requireNonNull(patchDir.listFiles())) {
-                if (!file.getName().endsWith(".patch")) {
-                    continue;
-                }
+            Path patchDir = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "nms-patches").toPath();
+            try (Stream<Path> stream = Files.walk(patchDir);
+                 Stream<Path> files = stream.filter(Files::isRegularFile)) {
+                AtomicReference<Exception> exception = new AtomicReference<>();
 
-                String targetFile = "net/minecraft/server/" + file.getName().replace(".patch", ".java");
-
-                File clean = new File(decompileDir, targetFile);
-                File t = new File(nmsDir.getParentFile(), targetFile);
-                Files.createDirectories(t.getParentFile().toPath());
-
-                System.out.println("Patching with " + file.getName());
-
-                List<String> readFile = FileUtils.readLines(file, StandardCharsets.UTF_8);
-
-                // Manually append a prelude if it is not found in the first few lines.
-                boolean preludeFound = false;
-                for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
-                    if (readFile.get(i).startsWith("+++")) {
-                        preludeFound = true;
-                        break;
+                files.forEach(path -> {
+                    if (!path.getFileName().endsWith(".patch")) {
+                        return;
                     }
-                }
-                if (!preludeFound) {
-                    readFile.add(0, "+++");
-                }
 
-                Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
-                List<?> modifiedLines = DiffUtils.patch(FileUtils.readLines(clean, StandardCharsets.UTF_8), parsedPatch);
+                    String relativeName = patchDir.relativize(path).toString().replace(".patch", ".java");
+                    String targetFile = (relativeName.contains(File.separator)) ? relativeName : "net/minecraft/server/" + relativeName;
 
-                try (BufferedWriter bw = new BufferedWriter(new FileWriter(t))) {
-                    for (Object line : modifiedLines) {
-                        bw.write((String) line);
-                        bw.newLine();
+                    File clean = new File(decompileDir, targetFile);
+                    File t = new File(nmsDir.getParentFile(), targetFile);
+                    try {
+                        Files.createDirectories(t.getParentFile().toPath());
+                    } catch (IOException ex) {
+                        exception.set(ex);
+                        return;
                     }
+
+                    System.out.println("Patching " + relativeName);
+
+                    try {
+                        List<String> readFile = Files.readAllLines(path, StandardCharsets.UTF_8);
+
+                        // Manually append prelude if it is not found in the first few lines.
+                        boolean preludeFound = false;
+                        for (int i = 0; i < Math.min(3, readFile.size()); ++i) {
+                            if (readFile.get(i).startsWith("+++")) {
+                                preludeFound = true;
+                                break;
+                            }
+                        }
+                        if (!preludeFound) {
+                            readFile.add(0, "+++");
+                        }
+
+                        Patch parsedPatch = DiffUtils.parseUnifiedDiff(readFile);
+                        List<?> modifiedLines = DiffUtils.patch(Files.readAllLines(clean.toPath(), StandardCharsets.UTF_8), parsedPatch);
+
+                        BufferedWriter bw = new BufferedWriter(new FileWriter(t));
+                        for (Object line : modifiedLines) {
+                            bw.write((String) line);
+                            bw.newLine();
+                        }
+                        bw.close();
+                    } catch (Exception ex) {
+                        throw new RuntimeException("Error patching " + relativeName, ex);
+                    }
+                });
+
+                if (exception.get() != null) {
+                    throw exception.get();
                 }
             }
+
             File tmpNms = new File(craftBukkitGit.getRepository().getDirectory().getParentFile(), "tmp-nms");
             FileUtils.copyDirectory(nmsDir, tmpNms);
 
@@ -414,22 +439,22 @@ public class Builder {
             if (cfg.toCompile.contains(Compile.CRAFTBUKKIT)) {
                 System.out.println("Compiling Bukkit");
                 if (cfg.isDevMode) {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-P", "development", "clean", "install");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "-P", "development", "clean", "install");
                 } else {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "clean", "install");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "clean", "install");
                 }
                 if (cfg.generateDoc) {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "javadoc:jar");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "javadoc:jar");
                 }
                 if (cfg.generateSrc) {
-                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "source:jar");
+                    Utils.runCommand(bukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "source:jar");
                 }
 
                 System.out.println("Compiling CraftBukkit");
                 if (cfg.isDevMode) {
-                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-P", "development", "clean", "install");
+                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "-P", "development", "clean", "install");
                 } else {
-                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "clean", "install");
+                    Utils.runCommand(craftBukkitGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "clean", "install");
                 }
             }
 
@@ -440,9 +465,9 @@ public class Builder {
                 if (cfg.toCompile.contains(Compile.SPIGOT)) {
                     System.out.println("Compiling Spigot & Spigot-API");
                     if (cfg.isDevMode) {
-                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-P", "development", "clean", "install");
+                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "-P", "development", "clean", "install");
                     } else {
-                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "clean", "install");
+                        Utils.runCommand(spigotGit.getRepository().getDirectory().getParentFile(), mvnCmd, "-B", "-Dbt.name=" + buildInfo.getName(), "clean", "install");
                     }
                 }
             } catch (Exception ex) {
@@ -473,11 +498,11 @@ public class Builder {
             if (Bootstrap.IS_WINDOWS) {
                 boolean arch64 = System.getProperty("os.arch").endsWith("64");
 
-                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
-                String gitVersion = "PortableGit-2.24.1.2-" + (arch64 ? "64" : "32") + "-bit";
+                // https://github.com/git-for-windows/git/releases/tag/v2.30.0.windows.1
+                String gitVersion = "PortableGit-2.30.0-" + (arch64 ? "64" : "32") + "-bit";
                 String gitHash = arch64 ?
-                        "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
-                        "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
+                        "6497e30fc6141e3c27af6cc3a081861043a7666dd54f395d47184e8eb75f5d61" :
+                        "b3768c64b6afa082043659c56acb4c3483df6b6e884fdc7e3c769f7e7e99a3a8";
 
                 File gitDir = Paths.get(cwd.getPath(), gitVersion, "PortableGit").toFile();
 
@@ -489,7 +514,8 @@ public class Builder {
                     File gitInstaller = new File(gitDir.getParentFile(), installerName);
                     gitInstaller.deleteOnExit();
 
-                    Utils.downloadFile("https://static.spigotmc.org/git/" + installerName, gitInstaller, HashAlgo.SHA256, gitHash);
+                    Utils.downloadFile("https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.1/" + installerName,
+                            gitInstaller, HashAlgo.SHA256, gitHash);
 
                     System.out.println("Extracting downloaded git installer");
                     // yes to all, silent, don't run. Only -y seems to work.
