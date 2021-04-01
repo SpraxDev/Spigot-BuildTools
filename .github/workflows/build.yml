@@ -42,7 +42,7 @@ jobs:
         run: 'mvn -B -Dbuild.number=$GITHUB_RUN_NUMBER -Duser.name="GitHub Runner on $GITHUB_REPOSITORY (id=$GITHUB_RUN_ID)" clean package'
 
       # Upload the .jar file
-      - name: 'Upload Build Artifact: BetterChairs.jar'
+      - name: 'Upload Build Artifact: BuildTools.jar'
         uses: actions/upload-artifact@v2
         with:
           name: BuildTools.jar
