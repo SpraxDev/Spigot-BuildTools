@@ -22,6 +22,10 @@ public class BuildInfo {
         this.refs = refs;
     }
 
+    public String getName() {
+        return name;
+    }
+
     public int getToolsVersion() {
         return toolsVersion;
     }
