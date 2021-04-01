@@ -29,7 +29,7 @@ public class Bootstrap {
      * This field holds the compatibility information
      * When the original project updates, this field has to be updated too!
      */
-    public static final int ORIGINAL_BUILD_NUMBER = getBuildNumber("git-BuildTools-7ca290a-123");
+    public static final int ORIGINAL_BUILD_NUMBER = getBuildNumber("git-BuildTools-abd1c56-124");
 
     public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
     public static final boolean AUTO_CRLF = !"\n".equals(System.getProperty("line.separator"));

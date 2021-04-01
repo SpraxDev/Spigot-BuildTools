@@ -475,11 +475,11 @@ public class Builder {
             if (Bootstrap.IS_WINDOWS) {
                 boolean arch64 = System.getProperty("os.arch").endsWith("64");
 
-                // https://github.com/git-for-windows/git/releases/tag/v2.24.1.windows.2
-                String gitVersion = "PortableGit-2.24.1.2-" + (arch64 ? "64" : "32") + "-bit";
+                // https://github.com/git-for-windows/git/releases/tag/v2.30.0.windows.1
+                String gitVersion = "PortableGit-2.30.0-" + (arch64 ? "64" : "32") + "-bit";
                 String gitHash = arch64 ?
-                        "cb75e4a557e01dd27b5af5eb59dfe28adcbad21638777dd686429dd905d13899" :
-                        "88f5525999228b0be8bb51788bfaa41b14430904bc65f1d4bbdcf441cac1f7fc";
+                        "6497e30fc6141e3c27af6cc3a081861043a7666dd54f395d47184e8eb75f5d61" :
+                        "b3768c64b6afa082043659c56acb4c3483df6b6e884fdc7e3c769f7e7e99a3a8";
 
                 File gitDir = Paths.get(cwd.getPath(), gitVersion, "PortableGit").toFile();
 
@@ -491,7 +491,8 @@ public class Builder {
                     File gitInstaller = new File(gitDir.getParentFile(), installerName);
                     gitInstaller.deleteOnExit();
 
-                    Utils.downloadFile("https://static.spigotmc.org/git/" + installerName, gitInstaller, HashAlgo.SHA256, gitHash);
+                    Utils.downloadFile("https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.1/" + installerName,
+                            gitInstaller, HashAlgo.SHA256, gitHash);
 
                     System.out.println("Extracting downloaded git installer");
                     // yes to all, silent, don't run. Only -y seems to work.
